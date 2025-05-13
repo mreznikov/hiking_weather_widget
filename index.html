@@ -1,12 +1,12 @@
-<!DOCTYPE html> 
-<html> 
+<!DOCTYPE html>
+<html>
 <head>
     <meta charset="UTF-8">
     <title>Grist Weather Fetcher</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; }
-        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; }
+        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; white-space: pre-wrap; }
         .processing { color: blue; }
         .success { color: green; }
         .error { color: red; }
@@ -20,27 +20,23 @@
     <script>
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
         let currentTable1RecordId = null;
-        let currentTable1Id = null; // ID таблицы, к которой привязан виджет (Table1)
+        let currentTable1Id = null; 
         
-        // ID колонок (убедитесь, что они соответствуют вашей структуре)
-        const TABLE1_ROUTE_NAME_COL_ID = "A"; // Название маршрута в Table1
-        const TABLE1_LAT_COL_ID = "B";        // Широта места похода в Table1
-        const TABLE1_LNG_COL_ID = "C";        // Долгота места похода в Table1
+        const TABLE1_ROUTE_NAME_COL_ID = "A"; 
+        const TABLE1_LAT_COL_ID = "B";        
+        const TABLE1_LNG_COL_ID = "C";        
 
-        const TABLE2_ID = "Table2";                // ID второй таблицы
-        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
-        const TABLE2_ROUTE_NAME_COL_ID = "F";    // Название маршрута в Table2 (для связи)
-        const TABLE2_TEMPERATURE_COL_ID = "I";   // Температура в Table2 (куда записывать)
+        const TABLE2_ID = "Table2"; // ID второй таблицы. Убедитесь, что он правильный!
+        const TABLE2_HIKE_DATE_COL_ID = "A";     
+        const TABLE2_ROUTE_NAME_COL_ID = "F";    
+        const TABLE2_TEMPERATURE_COL_ID = "I";   
 
         const statusDiv = document.getElementById('status');
 
-        /**
-         * Форматирует Grist timestamp (миллисекунды) или объект Date в строку YYYY-MM-DD.
-         */
         function formatDate_YYYY_MM_DD(dateValue) {
             if (!dateValue) return null;
             let dateObj;
-            if (typeof dateValue === 'number') { // Grist timestamp (ms)
+            if (typeof dateValue === 'number') { 
                 dateObj = new Date(dateValue);
             } else if (dateValue instanceof Date) {
                 dateObj = dateValue;
@@ -48,20 +44,14 @@
                 console.warn("Неверный формат даты:", dateValue);
                 return null;
             }
-            
-            // Корректируем часовой пояс, чтобы дата не "перескакивала" из-за UTC
-            // Это важно, если Grist хранит UTC, а API ожидает локальную дату без времени
             const year = dateObj.getFullYear();
             const month = String(dateObj.getMonth() + 1).padStart(2, '0');
             const day = String(dateObj.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         }
 
-        /**
-         * Получает среднюю дневную температуру для указанных координат и даты из Open-Meteo.
-         */
         async function getDailyAverageTemperature(lat, lng, dateString) {
-            statusDiv.textContent = `Запрос погоды для ${dateString} в ${lat.toFixed(2)},${lng.toFixed(2)}...`;
+            statusDiv.innerHTML += `Запрос погоды для ${dateString} в ${lat.toFixed(2)},${lng.toFixed(2)}...\n`;
             statusDiv.className = 'processing';
             console.log(`DEBUG: Запрос погоды для: lat=${lat}, lng=${lng}, date=${dateString}`);
 
@@ -95,9 +85,6 @@
             }
         }
 
-        /**
-         * Обработчик выбора записи в Table1.
-         */
         async function handleTable1Record(recordTable1, mappings) {
             if (!recordTable1 || typeof recordTable1.id === 'undefined') {
                 statusDiv.textContent = "Запись в Table1 не выбрана или невалидна.";
@@ -107,7 +94,7 @@
             }
             currentRecordId = recordTable1.id;
             console.log("DEBUG: Выбрана запись в Table1:", recordTable1);
-            statusDiv.textContent = `Обработка записи ID ${currentRecordId} из Table1...`;
+            statusDiv.textContent = `Обработка записи ID ${currentRecordId} из Table1...\n`;
             statusDiv.className = 'processing';
 
             const routeNameTable1 = recordTable1[TABLE1_ROUTE_NAME_COL_ID];
@@ -128,8 +115,18 @@
             }
 
             try {
-                console.log(`DEBUG: Поиск записей в ${TABLE2_ID} для маршрута: "${routeNameTable1}"`);
+                console.log(`DEBUG: Попытка загрузить ${TABLE2_ID}. ID для связи: "${routeNameTable1}"`);
                 const table2Data = await grist.docApi.fetchTable(TABLE2_ID);
+                console.log(`DEBUG: Получены данные из ${TABLE2_ID}:`, table2Data); // <<< ЛОГИРУЕМ, ЧТО ВЕРНУЛОСЬ
+
+                // <<< ИСПРАВЛЕНИЕ: Проверяем, что table2Data - это массив >>>
+                if (!Array.isArray(table2Data)) {
+                    console.error(`ОШИБКА: grist.docApi.fetchTable("${TABLE2_ID}") вернул не массив:`, table2Data);
+                    statusDiv.textContent = `Ошибка: не удалось получить данные из таблицы ${TABLE2_ID}.`;
+                    statusDiv.className = 'error';
+                    return;
+                }
+
                 const matchingRowsInTable2 = table2Data.filter(row => row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
 
                 if (matchingRowsInTable2.length === 0) {
@@ -140,22 +137,22 @@
                 }
 
                 let updatesMade = 0;
-                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для маршрута "${routeNameTable1}". Получение погоды...<br>`;
+                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для маршрута "${routeNameTable1}". Получение погоды...\n`;
 
                 for (const rowTable2 of matchingRowsInTable2) {
-                    const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID]; // Grist timestamp
+                    const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
                     const hikeDateFormatted = formatDate_YYYY_MM_DD(hikeDateTimestamp);
                     
                     if (!hikeDateFormatted) {
                         console.warn(`Пропуск строки ID ${rowTable2.id} в ${TABLE2_ID} из-за неверной даты.`);
-                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная дата).<br>`;
+                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная дата).\n`;
                         continue;
                     }
 
                     const temperature = await getDailyAverageTemperature(latTable1, lngTable1, hikeDateFormatted);
                     
                     console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, получена температура: ${temperature}`);
-                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: ${temperature}<br>`;
+                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: ${temperature}\n`;
 
                     if (temperature !== "N/A (нет даты/коорд.)" && temperature !== "Ошибка погоды" && temperature !== "N/A (нет данных)") {
                         await grist.docApi.applyUserActions([
@@ -181,9 +178,6 @@
             }
         }
 
-        /**
-         * Инициализация взаимодействия с Grist.
-         */
         function initGrist() {
             console.log("DEBUG: initGrist() called");
             if (typeof grist === 'undefined' || !grist.ready) {
@@ -194,13 +188,11 @@
             }
 
             grist.ready({
-                requiredAccess: 'full', // Нужен для applyUserActions для Table2
+                requiredAccess: 'full', 
                 columns: [ 
-                    // Колонки из Table1, к которой привязан виджет
                     { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' },
                     { name: TABLE1_LAT_COL_ID, type: 'Numeric' },
                     { name: TABLE1_LNG_COL_ID, type: 'Numeric' },
-                    // Добавьте сюда другие колонки из Table1, если они нужны напрямую в recordTable1
                 ]
             });
 
@@ -209,7 +201,7 @@
                 currentTable1Id = (options?.tableId) || (interaction?.tableId) || null;
                 if (currentTable1Id) {
                     console.log(`DEBUG: ID основной таблицы (Table1) установлен: ${currentTable1Id}`);
-                } else { 
+                } else {
                     console.error("ОШИБКА КРИТИЧЕСКАЯ: ID основной таблицы (Table1) не предоставлен виджету. Убедитесь, что виджет связан с Table1.");
                     statusDiv.textContent = "Ошибка конфигурации: виджет не связан с Table1.";
                     statusDiv.className = 'error';
@@ -220,8 +212,6 @@
             console.log("DEBUG: Grist API настроен и готов.");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
-
-        // Запуск инициализации
         initGrist();
     </script>
 </body>
