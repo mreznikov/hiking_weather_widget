@@ -26,12 +26,45 @@
         const TABLE1_LAT_COL_ID = "B";        
         const TABLE1_LNG_COL_ID = "C";        
 
-        const TABLE2_ID = "Table2"; // ID второй таблицы. Убедитесь, что он правильный!
+        const TABLE2_ID = "Table2"; 
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
         const TABLE2_TEMPERATURE_COL_ID = "I";   
 
         const statusDiv = document.getElementById('status');
+
+        /**
+         * Преобразует данные из колончатого формата Grist в массив объектов-строк.
+         * @param {object} columnarData - Данные в колончатом формате.
+         * @returns {Array<object>} Массив объектов-строк.
+         */
+        function transformColumnarData(columnarData) {
+            if (!columnarData || typeof columnarData.id === 'undefined' || !Array.isArray(columnarData.id)) {
+                // Если нет 'id' или 'id' не массив, вероятно, это уже не колончатый формат или пустые данные
+                console.warn("transformColumnarData: Данные не в ожидаемом колончатом формате или пусты.", columnarData);
+                return Array.isArray(columnarData) ? columnarData : []; // Возвращаем как есть, если это уже массив, или пустой массив
+            }
+
+            const numRows = columnarData.id.length;
+            const rows = [];
+            const columnIds = Object.keys(columnarData);
+
+            for (let i = 0; i < numRows; i++) {
+                const row = {};
+                for (const colId of columnIds) {
+                    // Проверяем, что для данной колонки есть значение для текущей строки
+                    if (columnarData[colId] && columnarData[colId].length > i) {
+                        row[colId] = columnarData[colId][i];
+                    } else {
+                        row[colId] = null; // Или другое значение по умолчанию
+                    }
+                }
+                rows.push(row);
+            }
+            console.log("DEBUG: Данные преобразованы из колончатого формата:", rows);
+            return rows;
+        }
+
 
         function formatDate_YYYY_MM_DD(dateValue) {
             if (!dateValue) return null;
@@ -116,27 +149,22 @@
 
             try {
                 console.log(`DEBUG: Попытка загрузить ${TABLE2_ID}. ID для связи: "${routeNameTable1}"`);
-                const table2Data = await grist.docApi.fetchTable(TABLE2_ID);
-                
-                // Расширенное логирование для table2Data
-                console.log(`DEBUG: Получены данные из ${TABLE2_ID} (тип: ${typeof table2Data}):`, table2Data);
-                console.log(`DEBUG: table2Data instanceof Array: ${table2Data instanceof Array}`);
-                console.log(`DEBUG: Array.isArray(table2Data): ${Array.isArray(table2Data)}`);
-                if (table2Data && typeof table2Data.filter === 'function') {
-                    console.log("DEBUG: table2Data ИМЕЕТ метод .filter()");
-                } else {
-                    console.error("ОШИБКА: table2Data НЕ ИМЕЕТ метода .filter()");
-                }
+                const rawTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
+                console.log(`DEBUG: Получены сырые данные из ${TABLE2_ID} (тип: ${typeof rawTable2Data}):`, rawTable2Data);
+
+                // Преобразуем данные, если они в колончатом формате
+                const table2Rows = transformColumnarData(rawTable2Data);
+                console.log(`DEBUG: Преобразованные данные из ${TABLE2_ID} (количество строк: ${table2Rows.length}):`, table2Rows);
 
 
-                if (!Array.isArray(table2Data) || typeof table2Data.filter !== 'function') { // Усиленная проверка
-                    console.error(`ОШИБКА: grist.docApi.fetchTable("${TABLE2_ID}") вернул некорректные данные:`, table2Data);
-                    statusDiv.textContent = `Ошибка: не удалось получить или обработать данные из таблицы ${TABLE2_ID}. Проверьте имя таблицы и ее доступность.`;
+                if (!Array.isArray(table2Rows)) { // Дополнительная проверка на всякий случай
+                    console.error(`ОШИБКА: Данные из ${TABLE2_ID} не удалось преобразовать в массив.`);
+                    statusDiv.textContent = `Ошибка: не удалось обработать данные из таблицы ${TABLE2_ID}.`;
                     statusDiv.className = 'error';
                     return;
                 }
 
-                const matchingRowsInTable2 = table2Data.filter(row => row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
+                const matchingRowsInTable2 = table2Rows.filter(row => row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
 
                 if (matchingRowsInTable2.length === 0) {
                     statusDiv.textContent = `В ${TABLE2_ID} не найдено записей для маршрута "${routeNameTable1}".`;
