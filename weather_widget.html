@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Grist Weather Fetcher</title>
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; }
+        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; }
+        .processing { color: blue; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h3>Получение температуры для походов</h3>
+    <p>Выберите строку в Table1, чтобы получить температуру для связанных дат из Table2.</p>
+    <div id="status">Ожидание выбора записи в Table1...</div>
+
+    <script>
+        // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
+        let currentTable1RecordId = null;
+        let currentTable1Id = null; // ID таблицы, к которой привязан виджет (Table1)
+        
+        // ID колонок (убедитесь, что они соответствуют вашей структуре)
+        const TABLE1_ROUTE_NAME_COL_ID = "A"; // Название маршрута в Table1
+        const TABLE1_LAT_COL_ID = "B";        // Широта места похода в Table1
+        const TABLE1_LNG_COL_ID = "C";        // Долгота места похода в Table1
+
+        const TABLE2_ID = "Table2";                // ID второй таблицы
+        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
+        const TABLE2_ROUTE_NAME_COL_ID = "F";    // Название маршрута в Table2 (для связи)
+        const TABLE2_TEMPERATURE_COL_ID = "I";   // Температура в Table2 (куда записывать)
+
+        const statusDiv = document.getElementById('status');
+
+        /**
+         * Форматирует Grist timestamp (миллисекунды) или объект Date в строку YYYY-MM-DD.
+         */
+        function formatDate_YYYY_MM_DD(dateValue) {
+            if (!dateValue) return null;
+            let dateObj;
+            if (typeof dateValue === 'number') { // Grist timestamp (ms)
+                dateObj = new Date(dateValue);
+            } else if (dateValue instanceof Date) {
+                dateObj = dateValue;
+            } else {
+                console.warn("Неверный формат даты:", dateValue);
+                return null;
+            }
+            
+            // Корректируем часовой пояс, чтобы дата не "перескакивала" из-за UTC
+            // Это важно, если Grist хранит UTC, а API ожидает локальную дату без времени
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        /**
+         * Получает среднюю дневную температуру для указанных координат и даты из Open-Meteo.
+         */
+        async function getDailyAverageTemperature(lat, lng, dateString) {
+            statusDiv.textContent = `Запрос погоды для ${dateString} в ${lat.toFixed(2)},${lng.toFixed(2)}...`;
+            statusDiv.className = 'processing';
+            console.log(`DEBUG: Запрос погоды для: lat=${lat}, lng=${lng}, date=${dateString}`);
+
+            if (!dateString || typeof lat !== 'number' || typeof lng !== 'number') {
+                console.warn("DEBUG: getDailyAverageTemperature - не хватает данных (дата/координаты).");
+                return "N/A (нет даты/коорд.)";
+            }
+            
+            const weatherApiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&daily=temperature_2m_mean&start_date=${dateString}&end_date=${dateString}&timezone=auto`;
+            
+            try {
+                const response = await fetch(weatherApiUrl);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ reason: "Не удалось получить детали ошибки" }));
+                    console.error("Ошибка API Open-Meteo:", response.status, errorData);
+                    throw new Error(`Open-Meteo API error: ${response.status} - ${errorData.reason || 'Unknown error'}`);
+                }
+                const data = await response.json();
+                console.log("DEBUG: Ответ Open-Meteo:", data);
+                if (data && data.daily && data.daily.temperature_2m_mean && data.daily.temperature_2m_mean.length > 0) {
+                    const temp = data.daily.temperature_2m_mean[0];
+                    if (temp === null || temp === undefined) return "N/A (нет данных)";
+                    return `${temp.toFixed(1)} °C`;
+                } else {
+                    console.warn("Open-Meteo не вернул данные о температуре:", data);
+                    return "N/A (нет данных)";
+                }
+            } catch (error) {
+                console.error("ОШИБКА при запросе погоды Open-Meteo:", error);
+                return "Ошибка погоды";
+            }
+        }
+
+        /**
+         * Обработчик выбора записи в Table1.
+         */
+        async function handleTable1Record(recordTable1, mappings) {
+            if (!recordTable1 || typeof recordTable1.id === 'undefined') {
+                statusDiv.textContent = "Запись в Table1 не выбрана или невалидна.";
+                statusDiv.className = '';
+                currentRecordId = null;
+                return;
+            }
+            currentRecordId = recordTable1.id;
+            console.log("DEBUG: Выбрана запись в Table1:", recordTable1);
+            statusDiv.textContent = `Обработка записи ID ${currentRecordId} из Table1...`;
+            statusDiv.className = 'processing';
+
+            const routeNameTable1 = recordTable1[TABLE1_ROUTE_NAME_COL_ID];
+            const latTable1 = recordTable1[TABLE1_LAT_COL_ID];
+            const lngTable1 = recordTable1[TABLE1_LNG_COL_ID];
+
+            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
+                statusDiv.textContent = "Ошибка: В выбранной записи Table1 отсутствуют координаты (колонки B, C).";
+                statusDiv.className = 'error';
+                console.error("Отсутствуют координаты в Table1:", recordTable1);
+                return;
+            }
+            if (!routeNameTable1) {
+                statusDiv.textContent = "Ошибка: В выбранной записи Table1 отсутствует Название маршрута (колонка A).";
+                statusDiv.className = 'error';
+                console.error("Отсутствует Название маршрута в Table1:", recordTable1);
+                return;
+            }
+
+            try {
+                console.log(`DEBUG: Поиск записей в ${TABLE2_ID} для маршрута: "${routeNameTable1}"`);
+                const table2Data = await grist.docApi.fetchTable(TABLE2_ID);
+                const matchingRowsInTable2 = table2Data.filter(row => row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
+
+                if (matchingRowsInTable2.length === 0) {
+                    statusDiv.textContent = `В ${TABLE2_ID} не найдено записей для маршрута "${routeNameTable1}".`;
+                    statusDiv.className = '';
+                    console.log(`Нет совпадений в ${TABLE2_ID} для маршрута:`, routeNameTable1);
+                    return;
+                }
+
+                let updatesMade = 0;
+                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для маршрута "${routeNameTable1}". Получение погоды...<br>`;
+
+                for (const rowTable2 of matchingRowsInTable2) {
+                    const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID]; // Grist timestamp
+                    const hikeDateFormatted = formatDate_YYYY_MM_DD(hikeDateTimestamp);
+                    
+                    if (!hikeDateFormatted) {
+                        console.warn(`Пропуск строки ID ${rowTable2.id} в ${TABLE2_ID} из-за неверной даты.`);
+                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная дата).<br>`;
+                        continue;
+                    }
+
+                    const temperature = await getDailyAverageTemperature(latTable1, lngTable1, hikeDateFormatted);
+                    
+                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, получена температура: ${temperature}`);
+                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: ${temperature}<br>`;
+
+                    if (temperature !== "N/A (нет даты/коорд.)" && temperature !== "Ошибка погоды" && temperature !== "N/A (нет данных)") {
+                        await grist.docApi.applyUserActions([
+                            ['UpdateRecord', TABLE2_ID, rowTable2.id, { [TABLE2_TEMPERATURE_COL_ID]: temperature }]
+                        ]);
+                        updatesMade++;
+                        console.log(`DEBUG: Обновлена температура для ${TABLE2_ID}.id=${rowTable2.id}`);
+                    }
+                }
+
+                if (updatesMade > 0) {
+                    statusDiv.innerHTML += `<b>Успешно обновлено ${updatesMade} записей о температуре в ${TABLE2_ID}!</b>`;
+                    statusDiv.className = 'success';
+                } else {
+                    statusDiv.innerHTML += `Не удалось обновить температуру (возможно, нет данных или были ошибки).`;
+                    statusDiv.className = 'error';
+                }
+
+            } catch (error) {
+                console.error("ОШИБКА при обработке записи Table1 или обновлении Table2:", error);
+                statusDiv.textContent = `Ошибка: ${error.message}`;
+                statusDiv.className = 'error';
+            }
+        }
+
+        /**
+         * Инициализация взаимодействия с Grist.
+         */
+        function initGrist() {
+            console.log("DEBUG: initGrist() called");
+            if (typeof grist === 'undefined' || !grist.ready) {
+                console.error("Grist API не найден. Убедитесь, что скрипт запущен внутри Grist.");
+                statusDiv.textContent = "Ошибка: Grist API не найден.";
+                statusDiv.className = 'error';
+                return;
+            }
+
+            grist.ready({
+                requiredAccess: 'full', // Нужен для applyUserActions для Table2
+                columns: [ 
+                    // Колонки из Table1, к которой привязан виджет
+                    { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' },
+                    { name: TABLE1_LAT_COL_ID, type: 'Numeric' },
+                    { name: TABLE1_LNG_COL_ID, type: 'Numeric' },
+                    // Добавьте сюда другие колонки из Table1, если они нужны напрямую в recordTable1
+                ]
+            });
+
+            grist.onOptions((options, interaction) => {
+                console.log("DEBUG: grist.onOptions - options:", options, "interaction:", interaction);
+                currentTable1Id = (options?.tableId) || (interaction?.tableId) || null;
+                if (currentTable1Id) {
+                    console.log(`DEBUG: ID основной таблицы (Table1) установлен: ${currentTable1Id}`);
+                } else { 
+                    console.error("ОШИБКА КРИТИЧЕСКАЯ: ID основной таблицы (Table1) не предоставлен виджету. Убедитесь, что виджет связан с Table1.");
+                    statusDiv.textContent = "Ошибка конфигурации: виджет не связан с Table1.";
+                    statusDiv.className = 'error';
+                }
+            });
+
+            grist.onRecord(handleTable1Record);
+            console.log("DEBUG: Grist API настроен и готов.");
+            statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
+        }
+
+        // Запуск инициализации
+        initGrist();
+    </script>
+</body>
+</html>
