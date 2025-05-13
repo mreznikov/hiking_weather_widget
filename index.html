@@ -6,7 +6,7 @@
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; }
-        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; white-space: pre-wrap; }
+        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; white-space: pre-wrap; /* Чтобы переносы строк в statusDiv работали */ }
         .processing { color: blue; }
         .success { color: green; }
         .error { color: red; }
@@ -117,17 +117,26 @@
             try {
                 console.log(`DEBUG: Попытка загрузить ${TABLE2_ID}. ID для связи: "${routeNameTable1}"`);
                 const table2Data = await grist.docApi.fetchTable(TABLE2_ID);
-                console.log(`DEBUG: Получены данные из ${TABLE2_ID}:`, table2Data); // <<< ЛОГИРУЕМ, ЧТО ВЕРНУЛОСЬ
+                
+                // Расширенное логирование для table2Data
+                console.log(`DEBUG: Получены данные из ${TABLE2_ID} (тип: ${typeof table2Data}):`, table2Data);
+                console.log(`DEBUG: table2Data instanceof Array: ${table2Data instanceof Array}`);
+                console.log(`DEBUG: Array.isArray(table2Data): ${Array.isArray(table2Data)}`);
+                if (table2Data && typeof table2Data.filter === 'function') {
+                    console.log("DEBUG: table2Data ИМЕЕТ метод .filter()");
+                } else {
+                    console.error("ОШИБКА: table2Data НЕ ИМЕЕТ метода .filter()");
+                }
 
-                // <<< ИСПРАВЛЕНИЕ: Проверяем, что table2Data - это массив >>>
-                if (!Array.isArray(table2Data)) {
-                    console.error(`ОШИБКА: grist.docApi.fetchTable("${TABLE2_ID}") вернул не массив:`, table2Data);
-                    statusDiv.textContent = `Ошибка: не удалось получить данные из таблицы ${TABLE2_ID}.`;
+
+                if (!Array.isArray(table2Data) || typeof table2Data.filter !== 'function') { // Усиленная проверка
+                    console.error(`ОШИБКА: grist.docApi.fetchTable("${TABLE2_ID}") вернул некорректные данные:`, table2Data);
+                    statusDiv.textContent = `Ошибка: не удалось получить или обработать данные из таблицы ${TABLE2_ID}. Проверьте имя таблицы и ее доступность.`;
                     statusDiv.className = 'error';
                     return;
                 }
 
-                const matchingRowsInTable2 = table2Data.filter(row => row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
+                const matchingRowsInTable2 = table2Data.filter(row => row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
 
                 if (matchingRowsInTable2.length === 0) {
                     statusDiv.textContent = `В ${TABLE2_ID} не найдено записей для маршрута "${routeNameTable1}".`;
