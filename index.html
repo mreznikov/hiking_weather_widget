@@ -6,7 +6,7 @@
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
         body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; }
-        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; white-space: pre-wrap; /* Чтобы переносы строк в statusDiv работали */ }
+        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; white-space: pre-wrap; }
         .processing { color: blue; }
         .success { color: green; }
         .error { color: red; }
@@ -40,9 +40,8 @@
          */
         function transformColumnarData(columnarData) {
             if (!columnarData || typeof columnarData.id === 'undefined' || !Array.isArray(columnarData.id)) {
-                // Если нет 'id' или 'id' не массив, вероятно, это уже не колончатый формат или пустые данные
                 console.warn("transformColumnarData: Данные не в ожидаемом колончатом формате или пусты.", columnarData);
-                return Array.isArray(columnarData) ? columnarData : []; // Возвращаем как есть, если это уже массив, или пустой массив
+                return Array.isArray(columnarData) ? columnarData : []; 
             }
 
             const numRows = columnarData.id.length;
@@ -52,11 +51,10 @@
             for (let i = 0; i < numRows; i++) {
                 const row = {};
                 for (const colId of columnIds) {
-                    // Проверяем, что для данной колонки есть значение для текущей строки
                     if (columnarData[colId] && columnarData[colId].length > i) {
                         row[colId] = columnarData[colId][i];
                     } else {
-                        row[colId] = null; // Или другое значение по умолчанию
+                        row[colId] = null; 
                     }
                 }
                 rows.push(row);
@@ -153,11 +151,11 @@
                 console.log(`DEBUG: Получены сырые данные из ${TABLE2_ID} (тип: ${typeof rawTable2Data}):`, rawTable2Data);
 
                 // Преобразуем данные, если они в колончатом формате
-                const table2Rows = transformColumnarData(rawTable2Data);
+                const table2Rows = transformColumnarData(rawTable2Data); 
                 console.log(`DEBUG: Преобразованные данные из ${TABLE2_ID} (количество строк: ${table2Rows.length}):`, table2Rows);
 
 
-                if (!Array.isArray(table2Rows)) { // Дополнительная проверка на всякий случай
+                if (!Array.isArray(table2Rows)) { 
                     console.error(`ОШИБКА: Данные из ${TABLE2_ID} не удалось преобразовать в массив.`);
                     statusDiv.textContent = `Ошибка: не удалось обработать данные из таблицы ${TABLE2_ID}.`;
                     statusDiv.className = 'error';
@@ -246,7 +244,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов.");
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.3");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
