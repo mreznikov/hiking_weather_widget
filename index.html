@@ -35,8 +35,6 @@
 
         /**
          * Преобразует данные из колончатого формата Grist в массив объектов-строк.
-         * @param {object} columnarData - Данные в колончатом формате.
-         * @returns {Array<object>} Массив объектов-строк.
          */
         function transformColumnarData(columnarData) {
             if (!columnarData || typeof columnarData.id === 'undefined' || !Array.isArray(columnarData.id)) {
@@ -63,22 +61,39 @@
             return rows;
         }
 
-
+        /**
+         * Форматирует Grist timestamp (секунды) или объект Date в строку YYYY-MM-DD.
+         */
         function formatDate_YYYY_MM_DD(dateValue) {
-            if (!dateValue) return null;
+            if (dateValue === null || dateValue === undefined || dateValue === 0) {
+                console.warn("formatDate_YYYY_MM_DD: Получено пустое или нулевое значение даты:", dateValue);
+                return null; // Обработка пустых или нулевых дат
+            }
+            
             let dateObj;
             if (typeof dateValue === 'number') { 
-                dateObj = new Date(dateValue);
+                // Grist возвращает timestamp в СЕКУНДАХ. JavaScript Date ожидает МИЛЛИСЕКУНДЫ.
+                console.log(`DEBUG: formatDate_YYYY_MM_DD: Исходное числовое значение даты (предположительно секунды): ${dateValue}`);
+                dateObj = new Date(dateValue * 1000); // <<< ИСПРАВЛЕНИЕ: Умножаем на 1000
             } else if (dateValue instanceof Date) {
                 dateObj = dateValue;
             } else {
-                console.warn("Неверный формат даты:", dateValue);
+                console.warn("Неверный формат даты для formatDate_YYYY_MM_DD:", dateValue, "(тип:", typeof dateValue, ")");
                 return null;
             }
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            
+            if (isNaN(dateObj.getTime())) { // Проверка на валидность даты
+                console.warn("Не удалось создать валидный объект Date из значения:", dateValue);
+                return null;
+            }
+
+            const year = dateObj.getUTCFullYear(); // Используем UTC, чтобы избежать смещения часового пояса
+            const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0'); // Месяцы от 0 до 11
+            const day = String(dateObj.getUTCDate()).padStart(2, '0');
+            
+            const formattedDate = `${year}-${month}-${day}`;
+            console.log(`DEBUG: formatDate_YYYY_MM_DD: Отформатированная дата: ${formattedDate}`);
+            return formattedDate;
         }
 
         async function getDailyAverageTemperature(lat, lng, dateString) {
@@ -150,7 +165,6 @@
                 const rawTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
                 console.log(`DEBUG: Получены сырые данные из ${TABLE2_ID} (тип: ${typeof rawTable2Data}):`, rawTable2Data);
 
-                // Преобразуем данные, если они в колончатом формате
                 const table2Rows = transformColumnarData(rawTable2Data); 
                 console.log(`DEBUG: Преобразованные данные из ${TABLE2_ID} (количество строк: ${table2Rows.length}):`, table2Rows);
 
@@ -175,12 +189,14 @@
                 statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для маршрута "${routeNameTable1}". Получение погоды...\n`;
 
                 for (const rowTable2 of matchingRowsInTable2) {
-                    const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
+                    const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID]; // Это timestamp из Grist (секунды)
+                    console.log(`DEBUG: Обработка строки Table2.id=${rowTable2.id}, значение даты из колонки ${TABLE2_HIKE_DATE_COL_ID}:`, hikeDateTimestamp, `(тип: ${typeof hikeDateTimestamp})`);
+                    
                     const hikeDateFormatted = formatDate_YYYY_MM_DD(hikeDateTimestamp);
                     
                     if (!hikeDateFormatted) {
-                        console.warn(`Пропуск строки ID ${rowTable2.id} в ${TABLE2_ID} из-за неверной даты.`);
-                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная дата).\n`;
+                        console.warn(`Пропуск строки ID ${rowTable2.id} в ${TABLE2_ID} из-за неверной/пустой даты.`);
+                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная/пустая дата).\n`;
                         continue;
                     }
 
@@ -244,7 +260,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.3");
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.4");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
