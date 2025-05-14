@@ -14,7 +14,7 @@
 </head>
 <body>
     <h3>Получение погоды для походов</h3>
-    <p>Выберите строку в Table1, чтобы получить температуру и прогноз для связанных дат из Table2.</p>
+    <p>Выберите строку в Table1, чтобы получить температуру и прогноз для связанных дат и времени из Table2.</p>
     <div id="status">Ожидание выбора записи в Table1...</div>
 
     <script>
@@ -27,10 +27,11 @@
         const TABLE1_LNG_COL_ID = "C";        
 
         const TABLE2_ID = "Table2"; 
-        const TABLE2_HIKE_DATE_COL_ID = "A";     
+        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
+        const TABLE2_HIKE_TIME_COL_ID = "K";     // Время начала похода в Table2 (например, "07:00")
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
         const TABLE2_TEMPERATURE_COL_ID = "I";   
-        const TABLE2_WEATHER_DESC_COL_ID = "J"; // <<< УСТАНОВЛЕНО В "J"
+        const TABLE2_WEATHER_DESC_COL_ID = "J";  // Описание погоды в Table2
 
         const statusDiv = document.getElementById('status');
 
@@ -62,7 +63,6 @@
             }
             let dateObj;
             if (typeof dateValue === 'number') { 
-                console.log(`DEBUG: formatDate_YYYY_MM_DD: Исходное числовое значение даты (предположительно секунды): ${dateValue}`);
                 dateObj = new Date(dateValue * 1000);
             } else if (dateValue instanceof Date) {
                 dateObj = dateValue;
@@ -84,7 +84,7 @@
 
         function getWeatherDescriptionFromWMO(code) {
             const wmoDescriptions = {
-                0: 'Ясно', 1: 'В основном ясно', 2: 'Переменная облачность', 3: 'Пасмурно',
+                0: 'Ясно', 1: 'В основном ясно, облака рассеиваются', 2: 'Переменная облачность', 3: 'Пасмурно',
                 45: 'Туман', 48: 'Изморозь (оседающий туман)',
                 51: 'Морось: легкая', 53: 'Морось: умеренная', 55: 'Морось: сильная',
                 56: 'Ледяная морось: легкая', 57: 'Ледяная морось: сильная',
@@ -92,9 +92,12 @@
                 66: 'Ледяной дождь: слабый', 67: 'Ледяной дождь: сильный',
                 71: 'Снегопад: слабый', 73: 'Снегопад: умеренный', 75: 'Снегопад: сильный',
                 77: 'Снежные зерна',
-                80: 'Ливень: слабый', 81: 'Ливень: умеренный', 82: 'Ливень: сильный',
+                80: 'Ливень: слабый', 81: 'Ливень: умеренный', 82: 'Ливень: сильный (проливной)',
                 85: 'Снежный ливень: слабый', 86: 'Снежный ливень: сильный',
-                95: 'Гроза: слабая или умеренная', 96: 'Гроза со слабым градом', 99: 'Гроза с сильным градом'
+                95: 'Гроза: слабая или умеренная', 
+                96: 'Гроза со слабым градом', 
+                99: 'Гроза с сильным градом'
+                // Добавьте больше кодов по мере необходимости из документации Open-Meteo
             };
             const description = wmoDescriptions[code];
             if (description) {
@@ -102,65 +105,65 @@
                 return description;
             } else {
                 console.warn(`DEBUG: getWeatherDescriptionFromWMO: Неизвестный WMO код: ${code}`);
-                return `Неизвестный код (${code})`;
+                return `Погодный код ${code}`;
             }
         }
 
-        async function getDailyWeather(lat, lng, dateString) {
-            statusDiv.innerHTML += `Запрос погоды для ${dateString} в ${lat.toFixed(2)},${lng.toFixed(2)}...\n`;
+        /**
+         * Получает почасовую температуру и код погоды для указанных координат, даты и часа.
+         */
+        async function getHourlyWeatherForHike(lat, lng, dateString, targetHour) {
+            statusDiv.innerHTML += `Запрос погоды для ${dateString} на ${String(targetHour).padStart(2, '0')}:00...\n`;
             statusDiv.className = 'processing';
-            console.log(`DEBUG: Запрос погоды для: lat=${lat}, lng=${lng}, date=${dateString}`);
+            console.log(`DEBUG: Запрос почасовой погоды: lat=${lat}, lng=${lng}, date=${dateString}, targetHour=${targetHour}`);
 
-            if (!dateString || typeof lat !== 'number' || typeof lng !== 'number') {
-                console.warn("DEBUG: getDailyWeather - не хватает данных (дата/координаты).");
-                return { temperature: "N/A (нет даты/коорд.)", description: "N/A (нет даты/коорд.)" };
+            if (!dateString || typeof lat !== 'number' || typeof lng !== 'number' || typeof targetHour !== 'number' || targetHour < 0 || targetHour > 23) {
+                console.warn("DEBUG: getHourlyWeatherForHike - неверные параметры (дата/координаты/час).");
+                return { temperature: "N/A (неверные параметры)", description: "N/A (неверные параметры)" };
             }
             
-            const weatherApiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&daily=temperature_2m_mean,weathercode&start_date=${dateString}&end_date=${dateString}&timezone=auto`;
+            const weatherApiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&hourly=temperature_2m,weathercode&start_date=${dateString}&end_date=${dateString}&timezone=auto`;
             
             try {
                 const response = await fetch(weatherApiUrl);
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ reason: "Не удалось получить детали ошибки" }));
-                    console.error("Ошибка API Open-Meteo:", response.status, errorData);
+                    console.error("Ошибка API Open-Meteo (hourly):", response.status, errorData);
                     throw new Error(`Open-Meteo API error: ${response.status} - ${errorData.reason || 'Unknown error'}`);
                 }
                 const data = await response.json();
-                console.log("DEBUG: Ответ Open-Meteo:", data);
+                console.log("DEBUG: Ответ Open-Meteo (hourly):", data);
                 
                 let temperature = "N/A (нет данных)";
                 let description = "N/A (нет данных)";
-                let weatherCode = null;
 
-                if (data && data.daily) {
-                    if (data.daily.temperature_2m_mean && data.daily.temperature_2m_mean.length > 0) {
-                        const temp = data.daily.temperature_2m_mean[0];
+                if (data && data.hourly && data.hourly.time && data.hourly.temperature_2m && data.hourly.weathercode) {
+                    // Находим индекс, соответствующий targetHour
+                    // Формат времени в data.hourly.time: "YYYY-MM-DDTHH:MM"
+                    const targetTimeString = `${dateString}T${String(targetHour).padStart(2, '0')}:00`;
+                    const hourIndex = data.hourly.time.indexOf(targetTimeString);
+
+                    if (hourIndex !== -1) {
+                        console.log(`DEBUG: Найден индекс ${hourIndex} для времени ${targetTimeString}`);
+                        const temp = data.hourly.temperature_2m[hourIndex];
                         if (temp !== null && temp !== undefined) {
                             temperature = `${temp.toFixed(1)} °C`;
                         }
-                    } else {
-                        console.warn("Open-Meteo не вернул данные о температуре:", data);
-                    }
-
-                    if (data.daily.weathercode && data.daily.weathercode.length > 0) {
-                        weatherCode = data.daily.weathercode[0];
-                        console.log("DEBUG: Получен weathercode от Open-Meteo:", weatherCode);
-                         if (weatherCode !== null && weatherCode !== undefined) {
-                            description = getWeatherDescriptionFromWMO(weatherCode);
-                        } else {
-                             console.warn("Open-Meteo вернул null или undefined weathercode.");
+                        const code = data.hourly.weathercode[hourIndex];
+                        if (code !== null && code !== undefined) {
+                            description = getWeatherDescriptionFromWMO(code);
                         }
                     } else {
-                        console.warn("Open-Meteo не вернул массив weathercode или он пуст:", data);
+                        console.warn(`Не найдено данных для времени ${targetTimeString} в ответе Open-Meteo.`);
                     }
                 } else {
-                     console.warn("Open-Meteo не вернул секцию 'daily':", data);
+                     console.warn("Open-Meteo не вернул ожидаемые почасовые данные (time, temperature_2m, weathercode).", data);
                 }
-                return { temperature, description, weatherCode }; 
+                return { temperature, description };
 
             } catch (error) {
-                console.error("ОШИБКА при запросе погоды Open-Meteo:", error);
-                return { temperature: "Ошибка погоды", description: "Ошибка погоды", weatherCode: null };
+                console.error("ОШИБКА при запросе почасовой погоды Open-Meteo:", error);
+                return { temperature: "Ошибка погоды", description: "Ошибка погоды" };
             }
         }
 
@@ -182,39 +185,30 @@
 
             if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
                 statusDiv.textContent = "Ошибка: В выбранной записи Table1 отсутствуют координаты (колонки B, C).";
-                statusDiv.className = 'error';
-                console.error("Отсутствуют координаты в Table1:", recordTable1);
-                return;
+                statusDiv.className = 'error'; return;
             }
             if (!routeNameTable1) {
                 statusDiv.textContent = "Ошибка: В выбранной записи Table1 отсутствует Название маршрута (колонка A).";
-                statusDiv.className = 'error';
-                console.error("Отсутствует Название маршрута в Table1:", recordTable1);
-                return;
+                statusDiv.className = 'error'; return;
             }
 
             try {
                 console.log(`DEBUG: Попытка загрузить ${TABLE2_ID}. ID для связи: "${routeNameTable1}"`);
                 const rawTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
-                console.log(`DEBUG: Получены сырые данные из ${TABLE2_ID} (тип: ${typeof rawTable2Data}):`, rawTable2Data);
-                
                 const table2Rows = transformColumnarData(rawTable2Data); 
                 console.log(`DEBUG: Преобразованные данные из ${TABLE2_ID} (количество строк: ${table2Rows.length}):`, table2Rows);
 
                 if (!Array.isArray(table2Rows)) { 
                     console.error(`ОШИБКА: Данные из ${TABLE2_ID} не удалось преобразовать в массив.`);
                     statusDiv.textContent = `Ошибка: не удалось обработать данные из таблицы ${TABLE2_ID}.`;
-                    statusDiv.className = 'error';
-                    return;
+                    statusDiv.className = 'error'; return;
                 }
 
                 const matchingRowsInTable2 = table2Rows.filter(row => row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
 
                 if (matchingRowsInTable2.length === 0) {
                     statusDiv.textContent = `В ${TABLE2_ID} не найдено записей для маршрута "${routeNameTable1}".`;
-                    statusDiv.className = '';
-                    console.log(`Нет совпадений в ${TABLE2_ID} для маршрута:`, routeNameTable1);
-                    return;
+                    statusDiv.className = ''; return;
                 }
 
                 let updatesMade = 0;
@@ -222,20 +216,38 @@
 
                 for (const rowTable2 of matchingRowsInTable2) {
                     const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
-                    console.log(`DEBUG: Обработка строки Table2.id=${rowTable2.id}, значение даты из колонки ${TABLE2_HIKE_DATE_COL_ID}:`, hikeDateTimestamp, `(тип: ${typeof hikeDateTimestamp})`);
+                    const hikeStartTimeString = rowTable2[TABLE2_HIKE_TIME_COL_ID]; // Время из колонки K
+                    
+                    console.log(`DEBUG: Обработка строки Table2.id=${rowTable2.id}, дата (timestamp): ${hikeDateTimestamp}, время начала: ${hikeStartTimeString}`);
                     
                     const hikeDateFormatted = formatDate_YYYY_MM_DD(hikeDateTimestamp);
                     
                     if (!hikeDateFormatted) {
-                        console.warn(`Пропуск строки ID ${rowTable2.id} в ${TABLE2_ID} из-за неверной/пустой даты.`);
-                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная/пустая дата).\n`;
-                        continue;
+                        statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная/пустая дата).\n`; continue;
                     }
 
-                    const weatherData = await getDailyWeather(latTable1, lngTable1, hikeDateFormatted);
+                    let targetHour = 12; // Час по умолчанию, если время не указано или неверно
+                    if (typeof hikeStartTimeString === 'string' && hikeStartTimeString.includes(':')) {
+                        const parts = hikeStartTimeString.split(':');
+                        const hour = parseInt(parts[0], 10);
+                        if (!isNaN(hour) && hour >= 0 && hour <= 23) {
+                            targetHour = (hour + 4); 
+                            if (targetHour >= 24) { // Если выходим за пределы дня, берем последний час текущего дня
+                                targetHour = 23; 
+                                console.warn(`Целевой час (${hour + 4}) выходит за пределы суток, используется 23:00`);
+                            }
+                        } else {
+                             console.warn(`Неверный формат времени "${hikeStartTimeString}" в колонке K. Используется час по умолчанию.`);
+                        }
+                    } else {
+                        console.warn(`Время в колонке K не указано или не в формате ЧЧ:ММ. Используется час по умолчанию.`);
+                    }
+                    console.log(`DEBUG: Целевой час для запроса погоды: ${targetHour}:00`);
+
+                    const weatherData = await getHourlyWeatherForHike(latTable1, lngTable1, hikeDateFormatted, targetHour);
                     
-                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, ПОЛУЧЕНЫ ДАННЫЕ ПОГОДЫ:`, weatherData);
-                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
+                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, время=${targetHour}:00, ПОЛУЧЕНЫ ДАННЫЕ ПОГОДЫ:`, weatherData);
+                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted} на ${String(targetHour).padStart(2, '0')}:00: Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
 
                     const updatePayload = {};
                     let shouldUpdate = false;
@@ -258,8 +270,6 @@
                         console.warn(`DEBUG: Описание погоды для ${TABLE2_ID}.id=${rowTable2.id} невалидно или отсутствует: "${weatherData.description}"`);
                     }
                     
-                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, updatePayload ПЕРЕД отправкой:`, JSON.parse(JSON.stringify(updatePayload)), `shouldUpdate: ${shouldUpdate}`);
-
                     if (shouldUpdate && Object.keys(updatePayload).length > 0) {
                         await grist.docApi.applyUserActions([
                             ['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]
@@ -316,7 +326,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.7"); // Обновляем на актуальную версию
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.10");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
