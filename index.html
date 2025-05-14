@@ -20,25 +20,21 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.14.5"; 
+        const WIDGET_VERSION = "v1.14.6"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
         let currentTable1SelectedRecordFull = null; 
         let currentTable1Id = null; 
         
-        // Колонки в Table1
-        // TABLE1_ROUTE_NAME_COL_ID - не используется для прямой связи, но может быть полезен для логов или отображения
-        const TABLE1_ROUTE_NAME_COL_ID = "A"; // Название маршрута в Table1 (для информации)
-        const TABLE1_LAT_COL_ID = "B";        // Широта места похода в Table1
-        const TABLE1_LNG_COL_ID = "C";        // Долгота места похода в Table1
-                                              // ID строки из Table1 (recordTable1.id) будет использоваться для связи
+        const TABLE1_ROUTE_NAME_COL_ID = "A"; 
+        const TABLE1_LAT_COL_ID = "B";        
+        const TABLE1_LNG_COL_ID = "C";        
 
-        // Колонки в Table2
         const TABLE2_ID = "Table2"; 
-        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
-        const TABLE2_HIKE_TIME_COL_ID = "K";     // Время начала похода в Table2
-        const TABLE2_REF_TO_TABLE1_COL_ID = "C"; // ИСПРАВЛЕНО: Ссылочная колонка в Table2, указывающая на Table1 (хранит rowId из Table1)
+        const TABLE2_HIKE_DATE_COL_ID = "A";     
+        const TABLE2_HIKE_TIME_COL_ID = "K";     
+        const TABLE2_REF_TO_TABLE1_COL_ID = "C"; // Связь Table1.id = Table2.C
         const TABLE2_TEMPERATURE_COL_ID = "I";   
         const TABLE2_WEATHER_DESC_COL_ID = "J";  
 
@@ -46,13 +42,10 @@
 
         function transformColumnarData(columnarData) {
             if (!columnarData || typeof columnarData !== 'object' || columnarData === null) {
-                console.warn("transformColumnarData: columnarData не является объектом или null.", columnarData);
                 return Array.isArray(columnarData) ? columnarData : [];
             }
             if (typeof columnarData.id === 'undefined' || !Array.isArray(columnarData.id)) {
-                console.warn("transformColumnarData: Данные не в ожидаемом колончатом формате (отсутствует id или id не массив).", columnarData);
                 if (Array.isArray(columnarData) && columnarData.every(item => typeof item === 'object' && item !== null && 'id' in item)) {
-                    console.log("transformColumnarData: Данные, похоже, уже в формате массива строк.");
                     return columnarData;
                 }
                 return []; 
@@ -69,21 +62,16 @@
                 }
                 rows.push(row);
             }
-            console.log("DEBUG: Данные преобразованы из колончатого формата (первые 3):", rows.slice(0,3));
             return rows;
         }
 
         function formatDate_YYYY_MM_DD(dateValue) {
-            if (dateValue === null || dateValue === undefined || dateValue === 0) {
-                return null; 
-            }
+            if (dateValue === null || dateValue === undefined || dateValue === 0) return null; 
             let dateObj;
-            if (typeof dateValue === 'number') { 
-                dateObj = new Date(dateValue * 1000);
-            } else if (dateValue instanceof Date) {
-                dateObj = dateValue;
-            } else { return null; }
-            if (isNaN(dateObj.getTime())) { return null; }
+            if (typeof dateValue === 'number') dateObj = new Date(dateValue * 1000);
+            else if (dateValue instanceof Date) dateObj = dateValue;
+            else return null;
+            if (isNaN(dateObj.getTime())) return null;
             const year = dateObj.getUTCFullYear(); 
             const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0'); 
             const day = String(dateObj.getUTCDate()).padStart(2, '0');
@@ -105,7 +93,6 @@
 
         async function getHourlyWeatherForHike(lat, lng, dateString, targetHour) {
             statusDiv.innerHTML += `Запрос погоды для ${dateString} на ${String(targetHour).padStart(2, '0')}:00...\n`;
-            statusDiv.className = 'processing';
             if (!dateString || typeof lat !== 'number' || typeof lng !== 'number' || typeof targetHour !== 'number' || targetHour < 0 || targetHour > 23) {
                 return { temperature: "N/A (параметры)", description: "N/A (параметры)" };
             }
@@ -134,9 +121,13 @@
         }
         
         async function processSingleTable2Row(rowTable2, latTable1, lngTable1) {
+            const oldTemperature = rowTable2[TABLE2_TEMPERATURE_COL_ID];
+            const oldWeatherDesc = rowTable2[TABLE2_WEATHER_DESC_COL_ID];
+            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Старые значения: Temp='${oldTemperature}', Desc='${oldWeatherDesc}'`);
+            
             const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
             const hikeTimeValue = rowTable2[TABLE2_HIKE_TIME_COL_ID];
-            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}, дата(ts): ${hikeDateTimestamp}, время(val):`, hikeTimeValue);
+            console.log(`DEBUG: processSingleTable2Row: дата(ts): ${hikeDateTimestamp}, время(val):`, hikeTimeValue);
 
             const hikeDateFormatted = formatDate_YYYY_MM_DD(hikeDateTimestamp);
             if (!hikeDateFormatted) {
@@ -158,19 +149,24 @@
             } else console.warn(`Не удалось определить час для Table2.id=${rowTable2.id}. Используется ${targetHour}:00`);
             
             const weatherData = await getHourlyWeatherForHike(latTable1, lngTable1, hikeDateFormatted, targetHour);
-            statusDiv.innerHTML += `Table2.id=${rowTable2.id} (${hikeDateFormatted} ${String(targetHour).padStart(2, '0')}:00): ${weatherData.temperature}, ${weatherData.description}\n`;
+            statusDiv.innerHTML += `Table2.id=${rowTable2.id} (${hikeDateFormatted} ${String(targetHour).padStart(2, '0')}:00): Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
+            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Новые значения: Temp='${weatherData.temperature}', Desc='${weatherData.description}'`);
+
 
             const updatePayload = {}; let shouldUpdate = false;
-            if (!weatherData.temperature.includes("N/A") && !weatherData.temperature.includes("Ошибка")) {
+            if (weatherData.temperature !== oldTemperature && !weatherData.temperature.includes("N/A") && !weatherData.temperature.includes("Ошибка")) {
                 updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature; shouldUpdate = true;
             }
-            if (!weatherData.description.includes("N/A") && !weatherData.description.includes("Ошибка") && !weatherData.description.startsWith("Погодный код")) {
+            if (weatherData.description !== oldWeatherDesc && !weatherData.description.includes("N/A") && !weatherData.description.includes("Ошибка") && !weatherData.description.startsWith("Погодный код")) {
                 updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description; shouldUpdate = true;
             }
+
             if (shouldUpdate && Object.keys(updatePayload).length > 0) {
                 console.log(`DEBUG: Обновление Table2.id=${rowTable2.id} с payload:`, updatePayload);
                 await grist.docApi.applyUserActions([['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]]);
                 return true;
+            } else {
+                console.log(`DEBUG: Обновление для Table2.id=${rowTable2.id} не требуется (данные не изменились или невалидны).`);
             }
             return false;
         }
@@ -181,11 +177,11 @@
             console.log("DEBUG: Выбрана запись в Table1:", recordTable1);
             statusDiv.textContent = `Обработка Table1.id=${recordTable1.id}...\n`; statusDiv.className = 'processing';
 
-            const selectedTable1RowId = recordTable1.id; // ID выбранной строки в Table1
+            const selectedTable1RowId = recordTable1.id;
             const latTable1 = recordTable1[TABLE1_LAT_COL_ID];
             const lngTable1 = recordTable1[TABLE1_LNG_COL_ID];
 
-            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number' || !selectedTable1RowId) { // Проверяем и selectedTable1RowId
+            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number' || !selectedTable1RowId) {
                 statusDiv.textContent = "Ошибка: В Table1 нет ID или координат (B,C)."; statusDiv.className = 'error'; return;
             }
             try {
@@ -193,9 +189,7 @@
                 const table2Rows = transformColumnarData(rawTable2Data); 
                 if (!Array.isArray(table2Rows)) { statusDiv.textContent = `Ошибка обработки данных ${TABLE2_ID}.`; statusDiv.className = 'error'; return; }
 
-                // ИСПРАВЛЕНО: Фильтруем строки Table2, где значение в колонке TABLE2_REF_TO_TABLE1_COL_ID ("C") равно ID выбранной строки Table1
                 const matchingRowsInTable2 = table2Rows.filter(r => r && r[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId);
-                
                 if (matchingRowsInTable2.length === 0) {
                     statusDiv.textContent = `В ${TABLE2_ID} нет записей, связанных с Table1.id=${selectedTable1RowId} (через Table2.${TABLE2_REF_TO_TABLE1_COL_ID}).`; return;
                 }
@@ -220,14 +214,14 @@
             console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
             console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
             
-            if (!currentTable1SelectedRecordFull || !currentTable1SelectedRecordFull.id) { // Проверяем и ID
+            if (!currentTable1SelectedRecordFull || !currentTable1SelectedRecordFull.id) {
                 console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
                 return;
             }
 
             const latTable1 = currentTable1SelectedRecordFull[TABLE1_LAT_COL_ID];
             const lngTable1 = currentTable1SelectedRecordFull[TABLE1_LNG_COL_ID];
-            const selectedTable1RowId = currentTable1SelectedRecordFull.id; // ID строки из Table1 для связи
+            const selectedTable1RowId = currentTable1SelectedRecordFull.id;
 
             if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
                 console.warn("DEBUG: handleTable2Changes - Недостаточно данных (координат) в выбранной записи Table1.");
@@ -265,69 +259,47 @@
                         const changedRow = allTable2Rows.find(r => r.id === rowId);
                         if (changedRow) { 
                              console.log(`DEBUG: handleTable2Changes - Найдена измененная строка Table2.id=${rowId}. Ее ссылочное поле (${TABLE2_REF_TO_TABLE1_COL_ID}): "${changedRow[TABLE2_REF_TO_TABLE1_COL_ID]}"`);
-                            if (changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) { // Сравниваем ID
+                            if (changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
                                 updatedRowIds.add(rowId);
                                 relevantChangeFound = true;
-                                console.log(`DEBUG: handleTable2Changes - Обнаружено релевантное изменение (связанное с Table1.id=${selectedTable1RowId}) в Table2.id=${rowId}`);
-                            } else {
-                                console.log(`DEBUG: handleTable2Changes - Изменение в Table2.id=${rowId} не связано с текущей записью Table1 (id=${selectedTable1RowId}).`);
                             }
-                        } else {
-                             console.warn(`DEBUG: handleTable2Changes - Не найдена строка с ID ${rowId} в allTable2Rows после изменения.`);
                         }
                     }
                 });
             } else { 
                 if (changes_raw === null) {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Будем перепроверять все связанные строки Table2.");
+                    console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Перепроверка всех связанных строк Table2.");
                 } else {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате Map или отсутствует. Структура 'changes_raw':", changes_raw, ". Будем перепроверять все связанные строки Table2.");
+                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате. Перепроверка всех связанных строк Table2.");
                 }
-                
-                allTable2Rows.forEach((row, index) => {
-                    if (row && typeof row === 'object') { 
-                        const refIdInTable2 = row[TABLE2_REF_TO_TABLE1_COL_ID]; 
-                        console.log(`DEBUG: handleTable2Changes (fallback) - Сравнение: Table1.id="${selectedTable1RowId}" с Table2.${TABLE2_REF_TO_TABLE1_COL_ID}="${refIdInTable2}" для Table2.id=${row.id}`);
-                        if (refIdInTable2 === selectedTable1RowId) {
-                            console.log(`DEBUG: handleTable2Changes (fallback) - Найдена связанная строка Table2.id=${row.id} для Table1.id=${selectedTable1RowId}`);
-                            updatedRowIds.add(row.id);
-                        }
-                    } else {
-                        console.log(`DEBUG: handleTable2Changes (fallback) - Строка Table2 index ${index} невалидна или null.`);
+                allTable2Rows.forEach(row => {
+                    if (row && row[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
+                        updatedRowIds.add(row.id);
                     }
                 });
-
-                if (updatedRowIds.size > 0) {
-                    relevantChangeFound = true; 
-                    statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для Table1.id=${selectedTable1RowId}...\n`;
-                }
+                if (updatedRowIds.size > 0) relevantChangeFound = true; 
             }
             
             if (relevantChangeFound && updatedRowIds.size > 0) {
-                statusDiv.innerHTML += `Обновление погоды для ${updatedRowIds.size} строк(и) в Table2...\n`;
+                statusDiv.innerHTML = `Обнаружено изменение в Table2. Обновление погоды для ${updatedRowIds.size} строк(и)...\n`;
                 statusDiv.className = 'processing';
                 let actualUpdatesMade = 0;
-
                 for (const rowId of updatedRowIds) {
                     const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
                     if (changedRowTable2) { 
-                         console.log(`DEBUG: handleTable2Changes - Вызов processSingleTable2Row для Table2.id=${changedRowTable2.id}`);
-                         if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1)){
-                             actualUpdatesMade++;
-                         }
+                         if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1)) actualUpdatesMade++;
                     }
                 }
                  if (actualUpdatesMade > 0) {
                     statusDiv.innerHTML += `<b>Успешно обновлено ${actualUpdatesMade} записей о погоде в ${TABLE2_ID}!</b>`;
                     statusDiv.className = 'success';
                 } else {
-                    statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для Table1.id=${selectedTable1RowId} (возможно, данные уже актуальны или не изменились релевантные поля).\n`;
+                    statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для Table1.id=${selectedTable1RowId}.\n`;
                 }
             } else {
-                console.log("DEBUG: handleTable2Changes - Не обнаружено релевантных изменений или связанных строк для обновления погоды.");
+                console.log("DEBUG: handleTable2Changes - Не обнаружено релевантных изменений или связанных строк для обновления.");
             }
         }
-
 
         function initGrist() {
             console.log("DEBUG: initGrist() called");
@@ -337,7 +309,7 @@
             grist.ready({
                 requiredAccess: 'full', 
                 columns: [ 
-                    { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' }, // Для отображения и для currentTable1SelectedRecordFull
+                    { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' },
                     { name: TABLE1_LAT_COL_ID, type: 'Numeric' },
                     { name: TABLE1_LNG_COL_ID, type: 'Numeric' },
                 ]
