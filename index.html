@@ -20,12 +20,12 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.14.11"; 
+        const WIDGET_VERSION = "v1.14.12"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
         let currentTable1SelectedRecordFull = null; 
-        let currentTable1Id = null; // Будет установлен в grist.ready
+        let currentTable1Id = null; 
         
         const TABLE1_ROUTE_NAME_COL_ID = "A"; 
         const TABLE1_LAT_COL_ID = "B";        
@@ -268,6 +268,7 @@
             const updatedRowIds = new Set();
             let relevantChangeFound = false;
 
+            // Пытаемся определить измененные строки из changes_raw, если это возможно
             if (changes_raw && changes_raw.updated && typeof changes_raw.updated.forEach === 'function') {
                 console.log("DEBUG: handleTable2Changes - Обработка детального объекта 'changes.updated'");
                 changes_raw.updated.forEach((modifiedColumnsMap, rowId) => {
@@ -276,30 +277,34 @@
 
                     if (hasDateChanged || hasTimeChanged) {
                         const changedRow = allTable2Rows.find(r => r.id === rowId);
-                        if (changedRow) { 
-                            if (changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
-                                updatedRowIds.add(rowId);
-                                relevantChangeFound = true;
-                            }
+                        if (changedRow && changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
+                            updatedRowIds.add(rowId);
+                            relevantChangeFound = true;
                         }
                     }
                 });
-            } else { 
+            } 
+            
+            // Если changes_raw не дал информации или был null, ИЛИ если мы хотим всегда перепроверять при любом изменении в Table2
+            if (!relevantChangeFound) { 
                 if (changes_raw === null) {
                     console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Перепроверка всех связанных строк Table2.");
                 } else {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате. Перепроверка всех связанных строк Table2.");
+                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате или не содержит релевантных изменений. Перепроверка всех связанных строк Table2.");
                 }
                 allTable2Rows.forEach(row => {
                     if (row && row[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
-                        updatedRowIds.add(row.id);
+                        updatedRowIds.add(row.id); // Добавляем все связанные строки для перепроверки
                     }
                 });
-                if (updatedRowIds.size > 0) relevantChangeFound = true; 
+                if (updatedRowIds.size > 0) {
+                    relevantChangeFound = true; 
+                    statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для Table1.id=${selectedTable1RowId}...\n`;
+                }
             }
             
             if (relevantChangeFound && updatedRowIds.size > 0) {
-                statusDiv.innerHTML = `Обнаружено изменение в Table2. Обновление погоды для ${updatedRowIds.size} строк(и)...\n`;
+                statusDiv.innerHTML += `Обновление погоды для ${updatedRowIds.size} строк(и) в Table2...\n`;
                 statusDiv.className = 'processing';
                 let actualUpdatesMade = 0;
                 for (const rowId of updatedRowIds) {
@@ -322,73 +327,53 @@
             }
         }
 
-        async function initGrist() { // Изменено для асинхронного получения tableId
+        function initGrist() {
             console.log("DEBUG: initGrist() called");
             if (typeof grist === 'undefined' || !grist.ready) {
                 console.error("Grist API не найден."); statusDiv.textContent = "Ошибка: Grist API не найден."; return;
             }
-
-            try {
-                await grist.ready({
-                    requiredAccess: 'full',
-                    columns: [
-                        { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' },
-                        { name: TABLE1_LAT_COL_ID, type: 'Numeric' },
-                        { name: TABLE1_LNG_COL_ID, type: 'Numeric' },
-                    ]
-                });
-
-                // Пытаемся получить ID основной таблицы более надежно
-                if (grist.selectedTable && typeof grist.selectedTable.getTableId === 'function') {
-                    currentTable1Id = await grist.selectedTable.getTableId();
-                }
+            grist.ready({
+                requiredAccess: 'full', 
+                columns: [ 
+                    { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' },
+                    { name: TABLE1_LAT_COL_ID, type: 'Numeric' },
+                    { name: TABLE1_LNG_COL_ID, type: 'Numeric' },
+                ]
+            });
+            grist.onOptions(async (options, interaction) => { // Сделаем onOptions асинхронным для await
+                console.log("DEBUG: grist.onOptions - options:", options, "interaction:", interaction);
+                let tableIdFromOptions = (options?.tableId) || (interaction?.tableId) || null;
                 
-                // Fallback, если getTableId не сработал или не доступен сразу
-                if (!currentTable1Id && grist.onOptions && typeof grist.onOptions === 'function') {
-                     grist.onOptions((options, interaction) => {
-                        console.log("DEBUG: grist.onOptions - options:", options, "interaction:", interaction);
-                        if (!currentTable1Id) { // Устанавливаем, только если еще не установлен
-                           currentTable1Id = (options?.tableId) || (interaction?.tableId) || null;
-                           if (currentTable1Id) {
-                                console.log(`DEBUG: ID основной таблицы (Table1) установлен через onOptions: ${currentTable1Id}`);
-                           }
-                        }
-                    });
-                }
-                
-                // Даем небольшой таймаут, чтобы onOptions мог сработать, если он асинхронный
-                setTimeout(async () => {
-                    if (!currentTable1Id) {
-                         console.warn("ПРЕДУПРЕЖДЕНИЕ: Не удалось определить ID основной таблицы (Table1) автоматически. Попробуйте выбрать виджет снова или проверьте его привязку.");
-                         // Можно использовать HARDCODED_TABLE_ID, если он есть, но это менее надежно
-                         // currentTable1Id = "Table1"; // Раскомментируйте, если хотите жестко задать
-                    }
-                    if (currentTable1Id) {
-                         console.log(`DEBUG: Финальный ID основной таблицы (Table1): ${currentTable1Id}`);
-                    } else {
-                        console.error("ОШИБКА КРИТИЧЕСКАЯ: ID основной таблицы (Table1) НЕ УСТАНОВЛЕН.");
-                        statusDiv.textContent = "Ошибка конфигурации: не удалось определить Table1.";
-                        return; // Прерываем дальнейшую инициализацию, если Table1 ID неизвестен
-                    }
-
-                    grist.onRecord(handleTable1Record); // Подписка на выбор записи в Table1
-                    console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID} (onRecords)`);
+                if (tableIdFromOptions) {
+                    currentTable1Id = tableIdFromOptions;
+                    console.log(`DEBUG: ID основной таблицы (Table1) установлен через onOptions: ${currentTable1Id}`);
+                } else if (grist.selectedTable && typeof grist.selectedTable.getTableId === 'function') {
                     try {
-                        grist.onRecords(handleTable2Changes, TABLE2_ID);
-                        console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID} (onRecords)`);
+                        currentTable1Id = await grist.selectedTable.getTableId();
+                        if (currentTable1Id) {
+                            console.log(`DEBUG: ID основной таблицы (Table1) установлен через grist.selectedTable.getTableId(): ${currentTable1Id}`);
+                        }
                     } catch (e) {
-                        console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID} (onRecords):`, e);
-                        statusDiv.innerHTML += `ОШИБКА: не удалось подписаться на изменения в ${TABLE2_ID}.\n${e.message}`;
+                        console.error("Ошибка при вызове grist.selectedTable.getTableId():", e);
                     }
-                    console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
-                    statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
+                }
 
-                }, 100); // Небольшая задержка для onOptions
-
-            } catch (err) {
-                console.error("Ошибка при grist.ready():", err);
-                statusDiv.textContent = "Ошибка инициализации виджета.";
+                if (!currentTable1Id) {
+                    console.error("ОШИБКА КРИТИЧЕСКАЯ: ID основной таблицы (Table1) не предоставлен.");
+                    statusDiv.textContent = "Ошибка конфигурации: виджет не связан с Table1.";
+                }
+            });
+            grist.onRecord(handleTable1Record);
+            console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID} (onRecords)`); 
+            try {
+                grist.onRecords(handleTable2Changes, TABLE2_ID); 
+                console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID} (onRecords)`); 
+            } catch (e) {
+                console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID} (onRecords):`, e);
+                statusDiv.innerHTML += `ОШИБКА: не удалось подписаться на изменения в ${TABLE2_ID}.\n${e.message}`;
             }
+            console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
+            statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
     </script>
