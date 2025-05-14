@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -27,11 +27,11 @@
         const TABLE1_LNG_COL_ID = "C";        
 
         const TABLE2_ID = "Table2"; 
-        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
-        const TABLE2_HIKE_TIME_COL_ID = "K";     // Время начала похода в Table2 (например, "07:00")
+        const TABLE2_HIKE_DATE_COL_ID = "A";     
+        const TABLE2_HIKE_TIME_COL_ID = "K";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
         const TABLE2_TEMPERATURE_COL_ID = "I";   
-        const TABLE2_WEATHER_DESC_COL_ID = "J";  // Описание погоды в Table2
+        const TABLE2_WEATHER_DESC_COL_ID = "J";  
 
         const statusDiv = document.getElementById('status');
 
@@ -97,7 +97,6 @@
                 95: 'Гроза: слабая или умеренная', 
                 96: 'Гроза со слабым градом', 
                 99: 'Гроза с сильным градом'
-                // Добавьте больше кодов по мере необходимости из документации Open-Meteo
             };
             const description = wmoDescriptions[code];
             if (description) {
@@ -109,9 +108,6 @@
             }
         }
 
-        /**
-         * Получает почасовую температуру и код погоды для указанных координат, даты и часа.
-         */
         async function getHourlyWeatherForHike(lat, lng, dateString, targetHour) {
             statusDiv.innerHTML += `Запрос погоды для ${dateString} на ${String(targetHour).padStart(2, '0')}:00...\n`;
             statusDiv.className = 'processing';
@@ -136,34 +132,33 @@
                 
                 let temperature = "N/A (нет данных)";
                 let description = "N/A (нет данных)";
+                let weatherCode = null;
 
                 if (data && data.hourly && data.hourly.time && data.hourly.temperature_2m && data.hourly.weathercode) {
-                    // Находим индекс, соответствующий targetHour
-                    // Формат времени в data.hourly.time: "YYYY-MM-DDTHH:MM"
-                    const targetTimeString = `${dateString}T${String(targetHour).padStart(2, '0')}:00`;
-                    const hourIndex = data.hourly.time.indexOf(targetTimeString);
+                    const targetISOStringPart = `${dateString}T${String(targetHour).padStart(2, '0')}:00`;
+                    const hourIndex = data.hourly.time.findIndex(timeStr => timeStr.startsWith(targetISOStringPart));
 
                     if (hourIndex !== -1) {
-                        console.log(`DEBUG: Найден индекс ${hourIndex} для времени ${targetTimeString}`);
+                        console.log(`DEBUG: Найден индекс ${hourIndex} для времени ${targetISOStringPart}`);
                         const temp = data.hourly.temperature_2m[hourIndex];
                         if (temp !== null && temp !== undefined) {
                             temperature = `${temp.toFixed(1)} °C`;
                         }
-                        const code = data.hourly.weathercode[hourIndex];
-                        if (code !== null && code !== undefined) {
-                            description = getWeatherDescriptionFromWMO(code);
+                        weatherCode = data.hourly.weathercode[hourIndex];
+                        if (weatherCode !== null && weatherCode !== undefined) {
+                            description = getWeatherDescriptionFromWMO(weatherCode);
                         }
                     } else {
-                        console.warn(`Не найдено данных для времени ${targetTimeString} в ответе Open-Meteo.`);
+                        console.warn(`Не найдено данных для времени ${targetISOStringPart} в ответе Open-Meteo.`);
                     }
                 } else {
                      console.warn("Open-Meteo не вернул ожидаемые почасовые данные (time, temperature_2m, weathercode).", data);
                 }
-                return { temperature, description };
+                return { temperature, description, weatherCode }; 
 
             } catch (error) {
                 console.error("ОШИБКА при запросе почасовой погоды Open-Meteo:", error);
-                return { temperature: "Ошибка погоды", description: "Ошибка погоды" };
+                return { temperature: "Ошибка погоды", description: "Ошибка погоды", weatherCode: null };
             }
         }
 
@@ -216,9 +211,9 @@
 
                 for (const rowTable2 of matchingRowsInTable2) {
                     const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
-                    const hikeStartTimeString = rowTable2[TABLE2_HIKE_TIME_COL_ID]; // Время из колонки K
+                    const hikeTimeValue = rowTable2[TABLE2_HIKE_TIME_COL_ID]; // Значение из колонки K
                     
-                    console.log(`DEBUG: Обработка строки Table2.id=${rowTable2.id}, дата (timestamp): ${hikeDateTimestamp}, время начала: ${hikeStartTimeString}`);
+                    console.log(`DEBUG: Обработка строки Table2.id=${rowTable2.id}, дата (timestamp): ${hikeDateTimestamp}, значение времени из колонки K:`, hikeTimeValue, `(тип: ${typeof hikeTimeValue})`);
                     
                     const hikeDateFormatted = formatDate_YYYY_MM_DD(hikeDateTimestamp);
                     
@@ -226,27 +221,45 @@
                         statusDiv.innerHTML += `Пропуск строки ID ${rowTable2.id} (неверная/пустая дата).\n`; continue;
                     }
 
-                    let targetHour = 12; // Час по умолчанию, если время не указано или неверно
-                    if (typeof hikeStartTimeString === 'string' && hikeStartTimeString.includes(':')) {
-                        const parts = hikeStartTimeString.split(':');
-                        const hour = parseInt(parts[0], 10);
-                        if (!isNaN(hour) && hour >= 0 && hour <= 23) {
-                            targetHour = (hour + 4); 
-                            if (targetHour >= 24) { // Если выходим за пределы дня, берем последний час текущего дня
-                                targetHour = 23; 
-                                console.warn(`Целевой час (${hour + 4}) выходит за пределы суток, используется 23:00`);
-                            }
+                    let startHour = null;
+                    let targetHour = 12; // Час по умолчанию
+
+                    if (typeof hikeTimeValue === 'number' && hikeTimeValue > 0) { // Если K - timestamp
+                        const timeObj = new Date(hikeTimeValue * 1000);
+                        if (!isNaN(timeObj.getTime())) {
+                            startHour = timeObj.getHours(); // Используем getHours() для локального времени браузера
+                            console.log(`DEBUG: Извлечен час (локальный) из timestamp ${hikeTimeValue} (колонка K): ${startHour}`);
                         } else {
-                             console.warn(`Неверный формат времени "${hikeStartTimeString}" в колонке K. Используется час по умолчанию.`);
+                             console.warn(`Не удалось создать валидный объект Date из timestamp ${hikeTimeValue} (колонка K).`);
+                        }
+                    } else if (typeof hikeTimeValue === 'string' && hikeTimeValue.includes(':')) { // Если K - строка "ЧЧ:ММ"
+                        const parts = hikeTimeValue.split(':');
+                        const parsedHour = parseInt(parts[0], 10);
+                        if (!isNaN(parsedHour) && parsedHour >= 0 && parsedHour <= 23) {
+                            startHour = parsedHour;
+                             console.log(`DEBUG: Извлечен час из строки "${hikeTimeValue}" (колонка K): ${startHour}`);
+                        } else {
+                            console.warn(`Неверный формат времени (строка) "${hikeTimeValue}" в колонке K.`);
                         }
                     } else {
-                        console.warn(`Время в колонке K не указано или не в формате ЧЧ:ММ. Используется час по умолчанию.`);
+                        console.warn(`Время в колонке K (${hikeTimeValue}) не является числовым timestamp или строкой ЧЧ:ММ.`);
                     }
-                    console.log(`DEBUG: Целевой час для запроса погоды: ${targetHour}:00`);
+
+                    if (startHour !== null) {
+                        targetHour = (startHour + 4); 
+                        if (targetHour >= 24) { 
+                            targetHour = 23; 
+                            console.warn(`Целевой час (${startHour + 4}) выходит за пределы суток для даты ${hikeDateFormatted}, используется 23:00`);
+                        }
+                    } else {
+                        console.warn(`Не удалось определить час начала похода из колонки K. Используется час по умолчанию: ${targetHour}:00`);
+                    }
+                    console.log(`DEBUG: Целевой час для запроса погоды: ${targetHour}`);
+
 
                     const weatherData = await getHourlyWeatherForHike(latTable1, lngTable1, hikeDateFormatted, targetHour);
                     
-                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, время=${targetHour}:00, ПОЛУЧЕНЫ ДАННЫЕ ПОГОДЫ:`, weatherData);
+                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, время=${String(targetHour).padStart(2, '0')}:00, ПОЛУЧЕНЫ ДАННЫЕ ПОГОДЫ:`, weatherData);
                     statusDiv.innerHTML += `Для даты ${hikeDateFormatted} на ${String(targetHour).padStart(2, '0')}:00: Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
 
                     const updatePayload = {};
@@ -270,6 +283,8 @@
                         console.warn(`DEBUG: Описание погоды для ${TABLE2_ID}.id=${rowTable2.id} невалидно или отсутствует: "${weatherData.description}"`);
                     }
                     
+                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, updatePayload ПЕРЕД отправкой:`, JSON.parse(JSON.stringify(updatePayload)), `shouldUpdate: ${shouldUpdate}`);
+
                     if (shouldUpdate && Object.keys(updatePayload).length > 0) {
                         await grist.docApi.applyUserActions([
                             ['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]
@@ -326,7 +341,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.10");
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.11");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
