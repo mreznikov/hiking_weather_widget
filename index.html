@@ -302,8 +302,8 @@
         
         async function handleTable2Changes(allTable2Records_raw, changes_raw) {
             console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
-            console.log("DEBUG: handleTable2Changes - Аргумент 'allTable2Records_raw' (тип):", typeof allTable2Records_raw, "Содержимое:", allTable2Records_raw);
-            console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", changes_raw);
+            console.log("DEBUG: handleTable2Changes - Аргумент 'allTable2Records_raw' (тип):", typeof allTable2Records_raw, "Содержимое:", JSON.stringify(allTable2Records_raw).substring(0, 200) + "...");
+            console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
             
             if (!currentTable1SelectedRecordFull) {
                 console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
@@ -319,8 +319,6 @@
                 return;
             }
 
-            // Grist API для onRecords должен возвращать массив объектов-строк.
-            // Но на всякий случай, если он вернет колончатый формат (как fetchTable), преобразуем.
             const allTable2Rows = Array.isArray(allTable2Records_raw) && allTable2Records_raw.every(item => typeof item === 'object' && item !== null && 'id' in item)
                                   ? allTable2Records_raw 
                                   : transformColumnarData(allTable2Records_raw);
@@ -330,15 +328,16 @@
                  statusDiv.innerHTML += `Ошибка: не удалось обработать данные из ${TABLE2_ID} при изменении.\n`;
                  return;
             }
-            console.log("DEBUG: handleTable2Changes - Преобразованные/проверенные allTable2Rows:", allTable2Rows);
+            console.log("DEBUG: handleTable2Changes - Преобразованные/проверенные allTable2Rows (первые 5):", allTable2Rows.slice(0,5));
 
 
             const updatedRowIds = new Set();
             let relevantChangeFound = false;
 
-            if (changes_raw && changes_raw.updated) {
-                console.log("DEBUG: handleTable2Changes - Обработка объекта 'changes.updated'");
-                // changes.updated это Map<rowId, Map<colId, newValue>>
+            // ИЗМЕНЕННАЯ ЛОГИКА: Если changes_raw не null, но не имеет ожидаемой структуры .updated,
+            // или если changes_raw === null, то мы перепроверяем все связанные строки.
+            if (changes_raw && changes_raw.updated && changes_raw.updated instanceof Map) {
+                console.log("DEBUG: handleTable2Changes - Обработка объекта 'changes.updated' (Map)");
                 for (const [rowId, modifiedColumnsMap] of changes_raw.updated) {
                     if (modifiedColumnsMap.has(TABLE2_HIKE_DATE_COL_ID) || modifiedColumnsMap.has(TABLE2_HIKE_TIME_COL_ID)) {
                         const changedRow = allTable2Rows.find(r => r.id === rowId);
@@ -349,16 +348,19 @@
                         }
                     }
                 }
-            } else if (changes_raw === null) {
-                console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Будем перепроверять все связанные строки Table2.");
+            } else { // Сюда попадаем, если changes_raw === null ИЛИ changes_raw.updated не является Map
+                if (changes_raw === null) {
+                    console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Будем перепроверять все связанные строки Table2.");
+                } else {
+                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не является Map или отсутствует. Структура 'changes_raw':", changes_raw, ". Будем перепроверять все связанные строки Table2.");
+                }
+                
                 const matchingRows = allTable2Rows.filter(row => row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
                 matchingRows.forEach(row => updatedRowIds.add(row.id));
                 if (updatedRowIds.size > 0) {
                     relevantChangeFound = true;
                     statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для маршрута "${routeNameTable1}"...\n`;
                 }
-            } else {
-                 console.log("DEBUG: handleTable2Changes - 'changes_raw' объект не предоставлен или не содержит 'updated'.");
             }
             
             if (relevantChangeFound && updatedRowIds.size > 0) {
