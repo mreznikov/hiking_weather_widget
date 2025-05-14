@@ -30,7 +30,7 @@
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
         const TABLE2_TEMPERATURE_COL_ID = "I";   
-        const TABLE2_WEATHER_DESC_COL_ID = "f"; // ID вашей новой колонки для описания погоды в Table2
+        const TABLE2_WEATHER_DESC_COL_ID = "f"; 
 
         const statusDiv = document.getElementById('status');
 
@@ -84,36 +84,26 @@
 
         function getWeatherDescriptionFromWMO(code) {
             const wmoDescriptions = {
-                0: 'Ясно',
-                1: 'В основном ясно',
-                2: 'Переменная облачность',
-                3: 'Пасмурно',
-                45: 'Туман',
-                48: 'Изморозь (оседающий туман)',
-                51: 'Морось: легкая',
-                53: 'Морось: умеренная',
-                55: 'Морось: сильная',
-                56: 'Ледяная морось: легкая',
-                57: 'Ледяная морось: сильная',
-                61: 'Дождь: слабый',
-                63: 'Дождь: умеренный',
-                65: 'Дождь: сильный',
-                66: 'Ледяной дождь: слабый',
-                67: 'Ледяной дождь: сильный',
-                71: 'Снегопад: слабый',
-                73: 'Снегопад: умеренный',
-                75: 'Снегопад: сильный',
+                0: 'Ясно', 1: 'В основном ясно', 2: 'Переменная облачность', 3: 'Пасмурно',
+                45: 'Туман', 48: 'Изморозь (оседающий туман)',
+                51: 'Морось: легкая', 53: 'Морось: умеренная', 55: 'Морось: сильная',
+                56: 'Ледяная морось: легкая', 57: 'Ледяная морось: сильная',
+                61: 'Дождь: слабый', 63: 'Дождь: умеренный', 65: 'Дождь: сильный',
+                66: 'Ледяной дождь: слабый', 67: 'Ледяной дождь: сильный',
+                71: 'Снегопад: слабый', 73: 'Снегопад: умеренный', 75: 'Снегопад: сильный',
                 77: 'Снежные зерна',
-                80: 'Ливень: слабый',
-                81: 'Ливень: умеренный',
-                82: 'Ливень: сильный',
-                85: 'Снежный ливень: слабый',
-                86: 'Снежный ливень: сильный',
-                95: 'Гроза: слабая или умеренная',
-                96: 'Гроза со слабым градом',
-                99: 'Гроза с сильным градом'
+                80: 'Ливень: слабый', 81: 'Ливень: умеренный', 82: 'Ливень: сильный',
+                85: 'Снежный ливень: слабый', 86: 'Снежный ливень: сильный',
+                95: 'Гроза: слабая или умеренная', 96: 'Гроза со слабым градом', 99: 'Гроза с сильным градом'
             };
-            return wmoDescriptions[code] || `Неизвестный код (${code})`;
+            const description = wmoDescriptions[code];
+            if (description) {
+                console.log(`DEBUG: getWeatherDescriptionFromWMO: код ${code} -> "${description}"`);
+                return description;
+            } else {
+                console.warn(`DEBUG: getWeatherDescriptionFromWMO: Неизвестный WMO код: ${code}`);
+                return `Неизвестный код (${code})`;
+            }
         }
 
         async function getDailyWeather(lat, lng, dateString) {
@@ -123,10 +113,9 @@
 
             if (!dateString || typeof lat !== 'number' || typeof lng !== 'number') {
                 console.warn("DEBUG: getDailyWeather - не хватает данных (дата/координаты).");
-                return { temperature: "N/A (нет даты/коорд.)", description: "N/A" };
+                return { temperature: "N/A (нет даты/коорд.)", description: "N/A (нет даты/коорд.)" };
             }
             
-            // Запрашиваем и температуру, и код погоды
             const weatherApiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&daily=temperature_2m_mean,weathercode&start_date=${dateString}&end_date=${dateString}&timezone=auto`;
             
             try {
@@ -141,6 +130,7 @@
                 
                 let temperature = "N/A (нет данных)";
                 let description = "N/A (нет данных)";
+                let weatherCode = null;
 
                 if (data && data.daily) {
                     if (data.daily.temperature_2m_mean && data.daily.temperature_2m_mean.length > 0) {
@@ -153,25 +143,29 @@
                     }
 
                     if (data.daily.weathercode && data.daily.weathercode.length > 0) {
-                        const code = data.daily.weathercode[0];
-                         if (code !== null && code !== undefined) {
-                            description = getWeatherDescriptionFromWMO(code);
+                        weatherCode = data.daily.weathercode[0];
+                        console.log("DEBUG: Получен weathercode от Open-Meteo:", weatherCode);
+                         if (weatherCode !== null && weatherCode !== undefined) {
+                            description = getWeatherDescriptionFromWMO(weatherCode);
+                        } else {
+                             console.warn("Open-Meteo вернул null или undefined weathercode.");
                         }
                     } else {
-                        console.warn("Open-Meteo не вернул код погоды:", data);
+                        console.warn("Open-Meteo не вернул массив weathercode или он пуст:", data);
                     }
                 } else {
                      console.warn("Open-Meteo не вернул секцию 'daily':", data);
                 }
-                return { temperature, description };
+                return { temperature, description, weatherCode }; // Возвращаем и код для отладки
 
             } catch (error) {
                 console.error("ОШИБКА при запросе погоды Open-Meteo:", error);
-                return { temperature: "Ошибка погоды", description: "Ошибка погоды" };
+                return { temperature: "Ошибка погоды", description: "Ошибка погоды", weatherCode: null };
             }
         }
 
         async function handleTable1Record(recordTable1, mappings) {
+            // ... (код без изменений до цикла for) ...
             if (!recordTable1 || typeof recordTable1.id === 'undefined') {
                 statusDiv.textContent = "Запись в Table1 не выбрана или невалидна.";
                 statusDiv.className = '';
@@ -241,8 +235,9 @@
 
                     const weatherData = await getDailyWeather(latTable1, lngTable1, hikeDateFormatted);
                     
-                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, получено: Температура=${weatherData.temperature}, Описание=${weatherData.description}`);
-                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: ${weatherData.temperature}, ${weatherData.description}\n`;
+                    // <<< ДОБАВЛЕН ЛОГ >>>
+                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, ПОЛУЧЕНЫ ДАННЫЕ ПОГОДЫ:`, weatherData);
+                    statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
 
                     const updatePayload = {};
                     let shouldUpdate = false;
@@ -251,20 +246,35 @@
                         updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
                         shouldUpdate = true;
                     }
-                    if (weatherData.description !== "N/A (нет даты/коорд.)" && weatherData.description !== "Ошибка погоды" && weatherData.description !== "N/A (нет данных)") {
+                    // Проверяем, что описание не является одной из "ошибочных" строк
+                    const isDescriptionValid = weatherData.description && 
+                                             weatherData.description !== "N/A (нет даты/коорд.)" && 
+                                             weatherData.description !== "Ошибка погоды" && 
+                                             weatherData.description !== "N/A (нет данных)" &&
+                                             !weatherData.description.startsWith("Неизвестный код"); 
+                    
+                    if (isDescriptionValid) {
                         updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description;
                         shouldUpdate = true;
+                    } else {
+                        console.warn(`DEBUG: Описание погоды для ${TABLE2_ID}.id=${rowTable2.id} невалидно или отсутствует: "${weatherData.description}"`);
                     }
+                    
+                    // <<< ДОБАВЛЕН ЛОГ >>>
+                    console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, updatePayload ПЕРЕД отправкой:`, JSON.parse(JSON.stringify(updatePayload)), `shouldUpdate: ${shouldUpdate}`);
 
-                    if (shouldUpdate) {
+
+                    if (shouldUpdate && Object.keys(updatePayload).length > 0) { // Добавлена проверка, что payload не пустой
                         await grist.docApi.applyUserActions([
                             ['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]
                         ]);
                         updatesMade++;
                         console.log(`DEBUG: Обновлены данные для ${TABLE2_ID}.id=${rowTable2.id}:`, updatePayload);
+                    } else {
+                        console.log(`DEBUG: Обновление для ${TABLE2_ID}.id=${rowTable2.id} не требуется или payload пуст.`);
                     }
                 }
-
+                // ... (остальной код без изменений) ...
                 if (updatesMade > 0) {
                     statusDiv.innerHTML += `<b>Успешно обновлено ${updatesMade} записей в ${TABLE2_ID}!</b>`;
                     statusDiv.className = 'success';
@@ -311,7 +321,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.5");
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.6");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
