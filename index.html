@@ -20,21 +20,25 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.14.2"; 
+        const WIDGET_VERSION = "v1.14.5"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
         let currentTable1SelectedRecordFull = null; 
         let currentTable1Id = null; 
         
-        const TABLE1_ROUTE_NAME_COL_ID = "A"; 
-        const TABLE1_LAT_COL_ID = "B";        
-        const TABLE1_LNG_COL_ID = "C";        
+        // Колонки в Table1
+        // TABLE1_ROUTE_NAME_COL_ID - не используется для прямой связи, но может быть полезен для логов или отображения
+        const TABLE1_ROUTE_NAME_COL_ID = "A"; // Название маршрута в Table1 (для информации)
+        const TABLE1_LAT_COL_ID = "B";        // Широта места похода в Table1
+        const TABLE1_LNG_COL_ID = "C";        // Долгота места похода в Table1
+                                              // ID строки из Table1 (recordTable1.id) будет использоваться для связи
 
+        // Колонки в Table2
         const TABLE2_ID = "Table2"; 
-        const TABLE2_HIKE_DATE_COL_ID = "A";     
-        const TABLE2_HIKE_TIME_COL_ID = "K";     
-        const TABLE2_ROUTE_NAME_COL_ID = "C";    // ИСПРАВЛЕНО: Связь Table1.A = Table2.C
+        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
+        const TABLE2_HIKE_TIME_COL_ID = "K";     // Время начала похода в Table2
+        const TABLE2_REF_TO_TABLE1_COL_ID = "C"; // ИСПРАВЛЕНО: Ссылочная колонка в Table2, указывающая на Table1 (хранит rowId из Table1)
         const TABLE2_TEMPERATURE_COL_ID = "I";   
         const TABLE2_WEATHER_DESC_COL_ID = "J";  
 
@@ -71,7 +75,6 @@
 
         function formatDate_YYYY_MM_DD(dateValue) {
             if (dateValue === null || dateValue === undefined || dateValue === 0) {
-                console.warn("formatDate_YYYY_MM_DD: Получено пустое или нулевое значение даты:", dateValue);
                 return null; 
             }
             let dateObj;
@@ -79,20 +82,12 @@
                 dateObj = new Date(dateValue * 1000);
             } else if (dateValue instanceof Date) {
                 dateObj = dateValue;
-            } else {
-                console.warn("Неверный формат даты для formatDate_YYYY_MM_DD:", dateValue, "(тип:", typeof dateValue, ")");
-                return null;
-            }
-            if (isNaN(dateObj.getTime())) { 
-                console.warn("Не удалось создать валидный объект Date из значения:", dateValue);
-                return null;
-            }
+            } else { return null; }
+            if (isNaN(dateObj.getTime())) { return null; }
             const year = dateObj.getUTCFullYear(); 
             const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0'); 
             const day = String(dateObj.getUTCDate()).padStart(2, '0');
-            const formattedDate = `${year}-${month}-${day}`;
-            // console.log(`DEBUG: formatDate_YYYY_MM_DD: Отформатированная дата: ${formattedDate}`); 
-            return formattedDate;
+            return `${year}-${month}-${day}`;
         }
 
         function getWeatherDescriptionFromWMO(code) {
@@ -105,16 +100,12 @@
                 85: 'Снежный ливень: слабый', 86: 'Снежный ливень: сильный',
                 95: 'Гроза', 96: 'Гроза с градом', 99: 'Сильная гроза с градом'
             };
-            const description = wmoDescriptions[code];
-            // console.log(`DEBUG: getWeatherDescriptionFromWMO: код ${code} -> "${description || `Код ${code}`}"`);
-            return description || `Код ${code}`;
+            return wmoDescriptions[code] || `Код ${code}`;
         }
 
         async function getHourlyWeatherForHike(lat, lng, dateString, targetHour) {
             statusDiv.innerHTML += `Запрос погоды для ${dateString} на ${String(targetHour).padStart(2, '0')}:00...\n`;
             statusDiv.className = 'processing';
-            console.log(`DEBUG: Запрос почасовой погоды: lat=${lat}, lng=${lng}, date=${dateString}, targetHour=${targetHour}`);
-
             if (!dateString || typeof lat !== 'number' || typeof lng !== 'number' || typeof targetHour !== 'number' || targetHour < 0 || targetHour > 23) {
                 return { temperature: "N/A (параметры)", description: "N/A (параметры)" };
             }
@@ -190,24 +181,26 @@
             console.log("DEBUG: Выбрана запись в Table1:", recordTable1);
             statusDiv.textContent = `Обработка Table1.id=${recordTable1.id}...\n`; statusDiv.className = 'processing';
 
-            const routeNameTable1 = recordTable1[TABLE1_ROUTE_NAME_COL_ID];
+            const selectedTable1RowId = recordTable1.id; // ID выбранной строки в Table1
             const latTable1 = recordTable1[TABLE1_LAT_COL_ID];
             const lngTable1 = recordTable1[TABLE1_LNG_COL_ID];
 
-            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number' || !routeNameTable1) {
-                statusDiv.textContent = "Ошибка: В Table1 нет Названия маршрута (A) или координат (B,C)."; statusDiv.className = 'error'; return;
+            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number' || !selectedTable1RowId) { // Проверяем и selectedTable1RowId
+                statusDiv.textContent = "Ошибка: В Table1 нет ID или координат (B,C)."; statusDiv.className = 'error'; return;
             }
             try {
                 const rawTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
                 const table2Rows = transformColumnarData(rawTable2Data); 
                 if (!Array.isArray(table2Rows)) { statusDiv.textContent = `Ошибка обработки данных ${TABLE2_ID}.`; statusDiv.className = 'error'; return; }
 
-                const matchingRowsInTable2 = table2Rows.filter(r => r && r[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
+                // ИСПРАВЛЕНО: Фильтруем строки Table2, где значение в колонке TABLE2_REF_TO_TABLE1_COL_ID ("C") равно ID выбранной строки Table1
+                const matchingRowsInTable2 = table2Rows.filter(r => r && r[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId);
+                
                 if (matchingRowsInTable2.length === 0) {
-                    statusDiv.textContent = `В ${TABLE2_ID} нет записей для маршрута "${routeNameTable1}".`; return;
+                    statusDiv.textContent = `В ${TABLE2_ID} нет записей, связанных с Table1.id=${selectedTable1RowId} (через Table2.${TABLE2_REF_TO_TABLE1_COL_ID}).`; return;
                 }
                 let updatesMadeCount = 0;
-                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для "${routeNameTable1}". Запрос погоды...\n`;
+                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для Table1.id=${selectedTable1RowId}. Запрос погоды...\n`;
                 for (const row of matchingRowsInTable2) {
                     const weatherMissing = !row[TABLE2_TEMPERATURE_COL_ID] || !row[TABLE2_WEATHER_DESC_COL_ID] || 
                                            row[TABLE2_TEMPERATURE_COL_ID].includes("N/A") || row[TABLE2_TEMPERATURE_COL_ID].includes("Ошибка") ||
@@ -223,21 +216,21 @@
             } catch (e) { console.error("ОШИБКА в handleTable1Record:", e); statusDiv.textContent = `Ошибка: ${e.message}`; statusDiv.className = 'error'; }
         }
         
-        async function handleTable2Changes(allTable2Records_from_event, changes_raw) {
+        async function handleTable2Changes(allTable2Records_from_event_ignored, changes_raw) {
             console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
             console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
             
-            if (!currentTable1SelectedRecordFull) {
+            if (!currentTable1SelectedRecordFull || !currentTable1SelectedRecordFull.id) { // Проверяем и ID
                 console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
                 return;
             }
 
             const latTable1 = currentTable1SelectedRecordFull[TABLE1_LAT_COL_ID];
             const lngTable1 = currentTable1SelectedRecordFull[TABLE1_LNG_COL_ID];
-            const routeNameTable1 = currentTable1SelectedRecordFull[TABLE1_ROUTE_NAME_COL_ID];
+            const selectedTable1RowId = currentTable1SelectedRecordFull.id; // ID строки из Table1 для связи
 
-            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number' || !routeNameTable1) {
-                console.warn("DEBUG: handleTable2Changes - Недостаточно данных в выбранной записи Table1.");
+            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
+                console.warn("DEBUG: handleTable2Changes - Недостаточно данных (координат) в выбранной записи Table1.");
                 return;
             }
             
@@ -257,7 +250,7 @@
                  return;
             }
             console.log(`DEBUG: handleTable2Changes - Свежие данные Table2 (первые 3):`, allTable2Rows.slice(0,3));
-            console.log(`DEBUG: handleTable2Changes - Текущий маршрут в Table1: "${routeNameTable1}"`);
+            console.log(`DEBUG: handleTable2Changes - ID текущей записи Table1 для связи: ${selectedTable1RowId}`);
 
             const updatedRowIds = new Set();
             let relevantChangeFound = false;
@@ -271,13 +264,13 @@
                     if (hasDateChanged || hasTimeChanged) {
                         const changedRow = allTable2Rows.find(r => r.id === rowId);
                         if (changedRow) { 
-                             console.log(`DEBUG: handleTable2Changes - Найдена измененная строка Table2.id=${rowId}. Ее routeName (${TABLE2_ROUTE_NAME_COL_ID}): "${changedRow[TABLE2_ROUTE_NAME_COL_ID]}"`);
-                            if (changedRow[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1) {
+                             console.log(`DEBUG: handleTable2Changes - Найдена измененная строка Table2.id=${rowId}. Ее ссылочное поле (${TABLE2_REF_TO_TABLE1_COL_ID}): "${changedRow[TABLE2_REF_TO_TABLE1_COL_ID]}"`);
+                            if (changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) { // Сравниваем ID
                                 updatedRowIds.add(rowId);
                                 relevantChangeFound = true;
-                                console.log(`DEBUG: handleTable2Changes - Обнаружено релевантное изменение (связанное с Table1) в Table2.id=${rowId}`);
+                                console.log(`DEBUG: handleTable2Changes - Обнаружено релевантное изменение (связанное с Table1.id=${selectedTable1RowId}) в Table2.id=${rowId}`);
                             } else {
-                                console.log(`DEBUG: handleTable2Changes - Изменение в Table2.id=${rowId} не связано с текущим маршрутом "${routeNameTable1}".`);
+                                console.log(`DEBUG: handleTable2Changes - Изменение в Table2.id=${rowId} не связано с текущей записью Table1 (id=${selectedTable1RowId}).`);
                             }
                         } else {
                              console.warn(`DEBUG: handleTable2Changes - Не найдена строка с ID ${rowId} в allTable2Rows после изменения.`);
@@ -293,10 +286,10 @@
                 
                 allTable2Rows.forEach((row, index) => {
                     if (row && typeof row === 'object') { 
-                        const routeNameInTable2 = row[TABLE2_ROUTE_NAME_COL_ID]; // Должно быть row["C"]
-                        console.log(`DEBUG: handleTable2Changes (fallback) - Сравнение: Table1.A="${routeNameTable1}" с Table2.${TABLE2_ROUTE_NAME_COL_ID}="${routeNameInTable2}" для Table2.id=${row.id}`);
-                        if (routeNameInTable2 === routeNameTable1) {
-                            console.log(`DEBUG: handleTable2Changes (fallback) - Найдена связанная строка Table2.id=${row.id} для маршрута "${routeNameTable1}"`);
+                        const refIdInTable2 = row[TABLE2_REF_TO_TABLE1_COL_ID]; 
+                        console.log(`DEBUG: handleTable2Changes (fallback) - Сравнение: Table1.id="${selectedTable1RowId}" с Table2.${TABLE2_REF_TO_TABLE1_COL_ID}="${refIdInTable2}" для Table2.id=${row.id}`);
+                        if (refIdInTable2 === selectedTable1RowId) {
+                            console.log(`DEBUG: handleTable2Changes (fallback) - Найдена связанная строка Table2.id=${row.id} для Table1.id=${selectedTable1RowId}`);
                             updatedRowIds.add(row.id);
                         }
                     } else {
@@ -306,7 +299,7 @@
 
                 if (updatedRowIds.size > 0) {
                     relevantChangeFound = true; 
-                    statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для маршрута "${routeNameTable1}"...\n`;
+                    statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для Table1.id=${selectedTable1RowId}...\n`;
                 }
             }
             
@@ -328,7 +321,7 @@
                     statusDiv.innerHTML += `<b>Успешно обновлено ${actualUpdatesMade} записей о погоде в ${TABLE2_ID}!</b>`;
                     statusDiv.className = 'success';
                 } else {
-                    statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для маршрута "${routeNameTable1}" (возможно, данные уже актуальны или не изменились релевантные поля).\n`;
+                    statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для Table1.id=${selectedTable1RowId} (возможно, данные уже актуальны или не изменились релевантные поля).\n`;
                 }
             } else {
                 console.log("DEBUG: handleTable2Changes - Не обнаружено релевантных изменений или связанных строк для обновления погоды.");
@@ -344,7 +337,7 @@
             grist.ready({
                 requiredAccess: 'full', 
                 columns: [ 
-                    { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' },
+                    { name: TABLE1_ROUTE_NAME_COL_ID, type: 'Text' }, // Для отображения и для currentTable1SelectedRecordFull
                     { name: TABLE1_LAT_COL_ID, type: 'Numeric' },
                     { name: TABLE1_LNG_COL_ID, type: 'Numeric' },
                 ]
