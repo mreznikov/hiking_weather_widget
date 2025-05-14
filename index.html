@@ -20,7 +20,7 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.14.8"; 
+        const WIDGET_VERSION = "v1.14.9"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
@@ -64,6 +64,7 @@
                 }
                 rows.push(row);
             }
+            // console.log("DEBUG: Данные преобразованы из колончатого формата (первые 3):", rows.slice(0,3));
             return rows;
         }
 
@@ -126,7 +127,7 @@
         async function processSingleTable2Row(rowTable2, latTable1, lngTable1, forceUpdate = false) {
             const oldTemperature = rowTable2[TABLE2_TEMPERATURE_COL_ID] || "";
             const oldWeatherDesc = rowTable2[TABLE2_WEATHER_DESC_COL_ID] || "";
-            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Старые значения: Temp='${oldTemperature}', Desc='${oldWeatherDesc}'`);
+            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Старые: Temp='${oldTemperature}', Desc='${oldWeatherDesc}', force=${forceUpdate}`);
             
             const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
             const hikeTimeValue = rowTable2[TABLE2_HIKE_TIME_COL_ID];
@@ -152,18 +153,18 @@
             
             const weatherData = await getHourlyWeatherForHike(latTable1, lngTable1, hikeDateFormatted, targetHour);
             statusDiv.innerHTML += `Table2.id=${rowTable2.id} (${hikeDateFormatted} ${String(targetHour).padStart(2, '0')}:00): Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
-            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Новые значения: Temp='${weatherData.temperature}', Desc='${weatherData.description}'`);
+            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Новые: Temp='${weatherData.temperature}', Desc='${weatherData.description}'`);
 
             const updatePayload = {}; 
-            let needsWriteToGrist = false;
+            let needsGristUpdate = false;
 
             const tempIsValid = weatherData.temperature && !weatherData.temperature.includes("N/A") && !weatherData.temperature.includes("Ошибка");
             const descIsValid = weatherData.description && !weatherData.description.includes("N/A") && !weatherData.description.includes("Ошибка") && !weatherData.description.startsWith("Погодный код");
 
-            if (forceUpdate) { // Если вызвано из handleTable2Changes, мы хотим записать, если данные валидны
+            if (forceUpdate) {
                 if (tempIsValid) updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
                 if (descIsValid) updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description;
-            } else { // Логика для handleTable1Record (начальное заполнение или если старые данные были невалидны)
+            } else {
                 if (tempIsValid && (weatherData.temperature !== oldTemperature || oldTemperature === "" || oldTemperature.includes("N/A") || oldTemperature.includes("Ошибка"))) {
                     updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
                 }
@@ -172,11 +173,11 @@
                 }
             }
             
-            if (Object.keys(updatePayload).length > 0) {
-                needsWriteToGrist = true;
+            if (Object.keys(updatePayload).length > 0) { // Если есть что обновлять
+                needsGristUpdate = true;
             }
 
-            if (needsWriteToGrist) {
+            if (needsGristUpdate) {
                 console.log(`DEBUG: Обновление Table2.id=${rowTable2.id} с payload:`, updatePayload);
                 await grist.docApi.applyUserActions([['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]]);
                 return true;
@@ -214,12 +215,12 @@
                     const currentTemp = row[TABLE2_TEMPERATURE_COL_ID];
                     const currentDesc = row[TABLE2_WEATHER_DESC_COL_ID];
                     const weatherMissing = !currentTemp || !currentDesc || 
-                                           currentTemp.includes("N/A") || currentTemp.includes("Ошибка") ||
-                                           currentDesc.includes("N/A") || currentDesc.includes("Ошибка");
+                                           String(currentTemp).includes("N/A") || String(currentTemp).includes("Ошибка") ||
+                                           String(currentDesc).includes("N/A") || String(currentDesc).includes("Ошибка");
                     
-                    if (weatherMissing) { // Только если данные отсутствуют или были ошибочными
+                    if (weatherMissing) { 
                         console.log(`Данные погоды для Table2.id=${row.id} отсутствуют или ошибочны, запрашиваем (из handleTable1Record).`);
-                        if(await processSingleTable2Row(row, latTable1, lngTable1, false)) { // false для forceUpdate
+                        if(await processSingleTable2Row(row, latTable1, lngTable1, false)) { 
                              updatesMadeCount++;
                         }
                     } else {
@@ -307,7 +308,7 @@
                     const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
                     if (changedRowTable2) { 
                          console.log(`DEBUG: handleTable2Changes - Вызов processSingleTable2Row для Table2.id=${changedRowTable2.id} с forceUpdate=true`);
-                         if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1, true)){ // true для forceUpdate
+                         if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1, true)){ 
                              actualUpdatesMade++;
                          }
                     }
