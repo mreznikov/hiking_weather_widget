@@ -20,7 +20,7 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.13.1"; 
+        const WIDGET_VERSION = "v1.13.2"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
@@ -31,7 +31,7 @@
         const TABLE1_LAT_COL_ID = "B";        
         const TABLE1_LNG_COL_ID = "C";        
 
-        const TABLE2_ID = "Table2"; 
+        const TABLE2_ID = "Table2"; // Убедитесь, что это точный ID вашей таблицы в Grist
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_HIKE_TIME_COL_ID = "K";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
@@ -333,9 +333,7 @@
                 statusDiv.className = 'processing';
                 let actualUpdatesMade = 0;
 
-                // Преобразуем allTable2Records, если он еще не преобразован (на случай, если это первый вызов)
                 const allTable2Rows = Array.isArray(allTable2Records) ? allTable2Records : transformColumnarData(allTable2Records);
-
 
                 for (const rowId of updatedRowIds) {
                     const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
@@ -388,9 +386,9 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID}`); // <<<< Новый лог
+            console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID}`); 
             grist.onRecords(handleTable2Changes, TABLE2_ID); 
-            console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID}`); // <<<< Новый лог
+            console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID}`); 
 
             console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
