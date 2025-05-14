@@ -2,30 +2,29 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Grist Weather Fetcher</title>
+    <title>Grist Weather Fetcher - onRecords Test</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <style>
-        body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; }
-        #status { margin-top: 10px; padding: 8px; background-color: #fff; border-radius: 4px; min-height: 40px; white-space: pre-wrap; }
+        body { font-family: sans-serif; padding: 10px; }
+        #status { margin-top: 10px; padding: 8px; background-color: #eee; border-radius: 4px; }
     </style>
 </head>
 <body>
-    <h3>Тест подписки на Table2</h3>
+    <h3>Тест подписки на изменения в Table2</h3>
     <div id="status">Ожидание изменений в Table2...</div>
 
     <script>
-        // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.13.4"; 
-        console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
+        const WIDGET_VERSION = "v1.13.5";
+        console.log(`DEBUG: Grist Weather Widget (onRecords Test) Загружен - Версия ${WIDGET_VERSION}`);
 
-        const TABLE2_ID = "Table2"; // Убедитесь, что это ТОЧНЫЙ ID вашей таблицы в Grist
+        const TABLE2_ID_TO_WATCH = "Table2"; // <<< УБЕДИТЕСЬ, ЧТО ЭТО ПРАВИЛЬНЫЙ ID ВАШЕЙ ТАБЛИЦЫ
         const statusDiv = document.getElementById('status');
 
         function diagnosticTable2ChangesCallback(records, changes) {
-            console.log("!!!! DIAGNOSTIC: handleTable2Changes (КОЛБЭК) ВЫЗВАНА !!!!");
+            console.log("!!!! DIAGNOSTIC: diagnosticTable2ChangesCallback ВЫЗВАНА !!!!");
             console.log("DIAGNOSTIC: Аргумент 'records':", records);
             console.log("DIAGNOSTIC: Аргумент 'changes':", changes);
-            statusDiv.innerHTML = `Событие для Table2! Записей: ${records ? records.length : 'N/A'}.<br>Изменения: ${JSON.stringify(changes, null, 2)}`;
+            statusDiv.innerHTML = `Событие для ${TABLE2_ID_TO_WATCH} получено!<br>Записей: ${records ? records.length : 'N/A'}.<br>Изменения: ${JSON.stringify(changes, null, 2)}`;
         }
 
         function initGrist() {
@@ -36,21 +35,20 @@
                 return;
             }
 
-            grist.ready(); // Минимальный вызов ready, так как мы не привязываемся к колонкам Table1 в этом тесте
+            grist.ready(); // Минимальный вызов, так как мы не привязываемся к колонкам
 
             grist.onOptions((options, interaction) => {
-                // Эта часть нужна, чтобы виджет считался "активным"
-                console.log("DEBUG: grist.onOptions - options:", options, "interaction:", interaction);
+                console.log("DEBUG: grist.onOptions вызвана (это нормально, для активации).");
             });
             
-            console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID} (onRecords)`); 
+            console.log(`DEBUG: Попытка подписаться на изменения в таблице с ID: "${TABLE2_ID_TO_WATCH}" (grist.onRecords)`); 
             try {
-                grist.onRecords(diagnosticTable2ChangesCallback, TABLE2_ID); 
-                console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID} (onRecords)`); 
-                statusDiv.textContent = `Виджет готов и слушает изменения в ${TABLE2_ID}. Измените данные в этой таблице.`;
+                grist.onRecords(diagnosticTable2ChangesCallback, TABLE2_ID_TO_WATCH); 
+                console.log(`DEBUG: Успешно подписан на изменения в таблице с ID: "${TABLE2_ID_TO_WATCH}" (grist.onRecords)`); 
+                statusDiv.textContent = `Виджет готов и слушает изменения в таблице "${TABLE2_ID_TO_WATCH}". Пожалуйста, измените данные в этой таблице.`;
             } catch (e) {
-                console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID} (onRecords):`, e);
-                statusDiv.innerHTML = `ОШИБКА: не удалось подписаться на изменения в ${TABLE2_ID}.\n${e.message}`;
+                console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID_TO_WATCH} (grist.onRecords):`, e);
+                statusDiv.innerHTML = `ОШИБКА: не удалось подписаться на изменения в ${TABLE2_ID_TO_WATCH}.\n${e.message}`;
             }
             console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
         }
@@ -58,4 +56,3 @@
     </script>
 </body>
 </html>
-
