@@ -20,7 +20,7 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.13.2"; 
+        const WIDGET_VERSION = "v1.13.3"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
@@ -31,7 +31,7 @@
         const TABLE1_LAT_COL_ID = "B";        
         const TABLE1_LNG_COL_ID = "C";        
 
-        const TABLE2_ID = "Table2"; // Убедитесь, что это точный ID вашей таблицы в Grist
+        const TABLE2_ID = "Table2"; 
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_HIKE_TIME_COL_ID = "K";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
@@ -41,13 +41,24 @@
         const statusDiv = document.getElementById('status');
 
         function transformColumnarData(columnarData) {
-            if (!columnarData || typeof columnarData.id === 'undefined' || !Array.isArray(columnarData.id)) {
-                console.warn("transformColumnarData: Данные не в ожидаемом колончатом формате или пусты.", columnarData);
-                return Array.isArray(columnarData) ? columnarData : []; 
+            if (!columnarData || typeof columnarData !== 'object' || columnarData === null) { // Проверяем, что это объект
+                console.warn("transformColumnarData: columnarData не является объектом или null.", columnarData);
+                return Array.isArray(columnarData) ? columnarData : []; // Если это уже массив, возвращаем его
             }
+            if (typeof columnarData.id === 'undefined' || !Array.isArray(columnarData.id)) {
+                console.warn("transformColumnarData: Данные не в ожидаемом колончатом формате (отсутствует id или id не массив).", columnarData);
+                // Если это уже массив объектов-строк (старый формат fetchTable или onRecords)
+                if (Array.isArray(columnarData) && columnarData.every(item => typeof item === 'object' && item !== null && 'id' in item)) {
+                    console.log("transformColumnarData: Данные, похоже, уже в формате массива строк.");
+                    return columnarData;
+                }
+                return []; 
+            }
+
             const numRows = columnarData.id.length;
             const rows = [];
             const columnIds = Object.keys(columnarData);
+
             for (let i = 0; i < numRows; i++) {
                 const row = {};
                 for (const colId of columnIds) {
@@ -290,12 +301,22 @@
             }
         }
         
-        async function handleTable2Changes(allTable2Records, changes) {
-            console.log("DEBUG: handleTable2Changes - Обнаружены изменения в Table2:", changes);
+        async function handleTable2Changes(allRecordsFromTable2, changes) {
+            console.log("DEBUG: handleTable2Changes ВЫЗВАНА. allRecordsFromTable2 (тип):", typeof allRecordsFromTable2, "changes:", changes);
+            
             if (!currentTable1SelectedRecordFull) {
                 console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
                 return;
             }
+
+            // Преобразуем allRecordsFromTable2, если это необходимо
+            // Grist API для onRecords должен возвращать массив объектов-строк, но проверим на всякий случай
+            const table2Rows = Array.isArray(allRecordsFromTable2) ? allRecordsFromTable2 : transformColumnarData(allRecordsFromTable2);
+            if (!Array.isArray(table2Rows)) {
+                 console.error("DEBUG: handleTable2Changes - allRecordsFromTable2 не является массивом и не удалось преобразовать.");
+                 return;
+            }
+
 
             const latTable1 = currentTable1SelectedRecordFull[TABLE1_LAT_COL_ID];
             const lngTable1 = currentTable1SelectedRecordFull[TABLE1_LNG_COL_ID];
@@ -309,13 +330,13 @@
             let relevantChangeFound = false;
             const updatedRowIds = new Set();
 
-            if (changes.updated) {
+            if (changes && changes.updated) { // Добавлена проверка на существование changes
                 for (const [rowId, modifiedColumns] of changes.updated) {
                     let colIdChanged = null;
                     if (modifiedColumns instanceof Map) { 
                         if (modifiedColumns.has(TABLE2_HIKE_DATE_COL_ID)) colIdChanged = TABLE2_HIKE_DATE_COL_ID;
                         else if (modifiedColumns.has(TABLE2_HIKE_TIME_COL_ID)) colIdChanged = TABLE2_HIKE_TIME_COL_ID;
-                    } else { 
+                    } else if (typeof modifiedColumns === 'object' && modifiedColumns !== null) { // Старый формат или просто объект
                         if (TABLE2_HIKE_DATE_COL_ID in modifiedColumns) colIdChanged = TABLE2_HIKE_DATE_COL_ID;
                         else if (TABLE2_HIKE_TIME_COL_ID in modifiedColumns) colIdChanged = TABLE2_HIKE_TIME_COL_ID;
                     }
@@ -326,6 +347,8 @@
                         console.log(`DEBUG: handleTable2Changes - Обнаружено изменение в Table2.id=${rowId}, колонка=${colIdChanged}`);
                     }
                 }
+            } else {
+                console.log("DEBUG: handleTable2Changes - объект 'changes' или 'changes.updated' отсутствует.");
             }
             
             if (relevantChangeFound) {
@@ -333,10 +356,8 @@
                 statusDiv.className = 'processing';
                 let actualUpdatesMade = 0;
 
-                const allTable2Rows = Array.isArray(allTable2Records) ? allTable2Records : transformColumnarData(allTable2Records);
-
                 for (const rowId of updatedRowIds) {
-                    const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
+                    const changedRowTable2 = table2Rows.find(r => r.id === rowId);
                     if (changedRowTable2 && changedRowTable2[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1) {
                          if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1)){
                              actualUpdatesMade++;
