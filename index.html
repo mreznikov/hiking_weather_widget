@@ -20,7 +20,7 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.13.8"; 
+        const WIDGET_VERSION = "v1.13.9"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
@@ -31,7 +31,7 @@
         const TABLE1_LAT_COL_ID = "B";        
         const TABLE1_LNG_COL_ID = "C";        
 
-        const TABLE2_ID = "Table2"; 
+        const TABLE2_ID = "Table2"; // Убедитесь, что это точный ID вашей таблицы в Grist
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_HIKE_TIME_COL_ID = "K";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
@@ -302,7 +302,7 @@
         
         async function handleTable2Changes(allTable2Records_raw, changes_raw) {
             console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
-            console.log("DEBUG: handleTable2Changes - Аргумент 'allTable2Records_raw' (тип):", typeof allTable2Records_raw); //, "Содержимое:", JSON.stringify(allTable2Records_raw).substring(0, 200) + "...");
+            console.log("DEBUG: handleTable2Changes - Аргумент 'allTable2Records_raw' (тип):", typeof allTable2Records_raw); 
             console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
             
             if (!currentTable1SelectedRecordFull) {
@@ -328,36 +328,40 @@
                  statusDiv.innerHTML += `Ошибка: не удалось обработать данные из ${TABLE2_ID} при изменении.\n`;
                  return;
             }
-            // console.log("DEBUG: handleTable2Changes - Преобразованные/проверенные allTable2Rows (первые 5):", allTable2Rows.slice(0,5));
-
+            
             const updatedRowIds = new Set();
             let relevantChangeFound = false;
 
-            if (changes_raw && changes_raw.updated && changes_raw.updated instanceof Map) {
-                console.log("DEBUG: handleTable2Changes - Обработка объекта 'changes.updated' (Map)");
-                for (const [rowId, modifiedColumnsMap] of changes_raw.updated) {
-                    if (modifiedColumnsMap.has(TABLE2_HIKE_DATE_COL_ID) || modifiedColumnsMap.has(TABLE2_HIKE_TIME_COL_ID)) {
+            // Логика обработки изменений:
+            // Если Grist предоставляет детальный объект 'changes.updated', используем его.
+            // Иначе (если 'changes' null или не в ожидаемом формате), перепроверяем все связанные строки.
+            if (changes_raw && changes_raw.updated && typeof changes_raw.updated.forEach === 'function') { // Проверяем, что updated это Map-подобный объект
+                console.log("DEBUG: handleTable2Changes - Обработка объекта 'changes.updated'");
+                changes_raw.updated.forEach((modifiedColumnsMap, rowId) => {
+                    // Проверяем, что modifiedColumnsMap это Map или объект
+                     const hasDateChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_DATE_COL_ID) : TABLE2_HIKE_DATE_COL_ID in modifiedColumnsMap;
+                     const hasTimeChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_TIME_COL_ID) : TABLE2_HIKE_TIME_COL_ID in modifiedColumnsMap;
+
+                    if (hasDateChanged || hasTimeChanged) {
                         const changedRow = allTable2Rows.find(r => r.id === rowId);
                         if (changedRow && changedRow[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1) {
                             updatedRowIds.add(rowId);
                             relevantChangeFound = true;
-                            console.log(`DEBUG: handleTable2Changes - Обнаружено релевантное изменение в Table2.id=${rowId}, колонки:`, Array.from(modifiedColumnsMap.keys()));
+                            console.log(`DEBUG: handleTable2Changes - Обнаружено релевантное изменение в Table2.id=${rowId}`);
                         }
                     }
-                }
+                });
             } else { 
-                // Если changes_raw не null, но не имеет ожидаемой структуры .updated,
-                // ИЛИ если changes_raw === null, то мы перепроверяем все связанные строки.
                 if (changes_raw === null) {
                     console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Будем перепроверять все связанные строки Table2.");
                 } else {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не является Map или отсутствует. Структура 'changes_raw':", changes_raw, ". Будем перепроверять все связанные строки Table2.");
+                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате Map или отсутствует. Структура 'changes_raw':", changes_raw, ". Будем перепроверять все связанные строки Table2.");
                 }
                 
                 const matchingRows = allTable2Rows.filter(row => row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1);
-                matchingRows.forEach(row => updatedRowIds.add(row.id)); // Добавляем ID всех связанных строк для перепроверки
+                matchingRows.forEach(row => updatedRowIds.add(row.id)); 
                 if (updatedRowIds.size > 0) {
-                    relevantChangeFound = true; // Помечаем, что нужно обработать эти строки
+                    relevantChangeFound = true; 
                     statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для маршрута "${routeNameTable1}"...\n`;
                 }
             }
@@ -409,7 +413,7 @@
                 console.log("DEBUG: grist.onOptions - options:", options, "interaction:", interaction);
                 currentTable1Id = (options?.tableId) || (interaction?.tableId) || null;
                 if (currentTable1Id) {
-                    console.log(`DEBUG: ID основной таблицы (Table1) установлен: ${currentTableId}`);
+                    console.log(`DEBUG: ID основной таблицы (Table1) установлен: ${currentTable1Id}`);
                 } else {
                     console.error("ОШИБКА КРИТИЧЕСКАЯ: ID основной таблицы (Table1) не предоставлен виджету. Убедитесь, что виджет связан с Table1.");
                     statusDiv.textContent = "Ошибка конфигурации: виджет не связан с Table1.";
