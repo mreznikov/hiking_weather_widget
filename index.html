@@ -27,14 +27,14 @@
         let currentTable1SelectedRecordFull = null; 
         let currentTable1Id = null; 
         
-        const TABLE1_ROUTE_NAME_COL_ID = "A"; // Название маршрута в Table1
+        const TABLE1_ROUTE_NAME_COL_ID = "A"; 
         const TABLE1_LAT_COL_ID = "B";        
         const TABLE1_LNG_COL_ID = "C";        
 
         const TABLE2_ID = "Table2"; 
-        const TABLE2_HIKE_DATE_COL_ID = "A";     // Дата похода в Table2
-        const TABLE2_HIKE_TIME_COL_ID = "K";     // Время начала похода в Table2 (например, "07:00")
-        const TABLE2_ROUTE_NAME_COL_ID = "C";    // ИЗМЕНЕНО: Название маршрута в Table2 (для связи с Table1.A)
+        const TABLE2_HIKE_DATE_COL_ID = "A";     
+        const TABLE2_HIKE_TIME_COL_ID = "K";     
+        const TABLE2_ROUTE_NAME_COL_ID = "F";    // Связь Table1.A = Table2.F
         const TABLE2_TEMPERATURE_COL_ID = "I";   
         const TABLE2_WEATHER_DESC_COL_ID = "J";  
 
@@ -53,11 +53,9 @@
                 }
                 return []; 
             }
-
             const numRows = columnarData.id.length;
             const rows = [];
             const columnIds = Object.keys(columnarData);
-
             for (let i = 0; i < numRows; i++) {
                 const row = {};
                 for (const colId of columnIds) {
@@ -73,7 +71,6 @@
 
         function formatDate_YYYY_MM_DD(dateValue) {
             if (dateValue === null || dateValue === undefined || dateValue === 0) {
-                console.warn("formatDate_YYYY_MM_DD: Получено пустое или нулевое значение даты:", dateValue);
                 return null; 
             }
             let dateObj;
@@ -81,20 +78,12 @@
                 dateObj = new Date(dateValue * 1000);
             } else if (dateValue instanceof Date) {
                 dateObj = dateValue;
-            } else {
-                console.warn("Неверный формат даты для formatDate_YYYY_MM_DD:", dateValue, "(тип:", typeof dateValue, ")");
-                return null;
-            }
-            if (isNaN(dateObj.getTime())) { 
-                console.warn("Не удалось создать валидный объект Date из значения:", dateValue);
-                return null;
-            }
+            } else { return null; }
+            if (isNaN(dateObj.getTime())) { return null; }
             const year = dateObj.getUTCFullYear(); 
             const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0'); 
             const day = String(dateObj.getUTCDate()).padStart(2, '0');
-            const formattedDate = `${year}-${month}-${day}`;
-            // console.log(`DEBUG: formatDate_YYYY_MM_DD: Отформатированная дата: ${formattedDate}`);
-            return formattedDate;
+            return `${year}-${month}-${day}`;
         }
 
         function getWeatherDescriptionFromWMO(code) {
@@ -107,16 +96,12 @@
                 85: 'Снежный ливень: слабый', 86: 'Снежный ливень: сильный',
                 95: 'Гроза', 96: 'Гроза с градом', 99: 'Сильная гроза с градом'
             };
-            const description = wmoDescriptions[code];
-            // console.log(`DEBUG: getWeatherDescriptionFromWMO: код ${code} -> "${description || `Код ${code}`}"`);
-            return description || `Код ${code}`;
+            return wmoDescriptions[code] || `Код ${code}`;
         }
 
         async function getHourlyWeatherForHike(lat, lng, dateString, targetHour) {
             statusDiv.innerHTML += `Запрос погоды для ${dateString} на ${String(targetHour).padStart(2, '0')}:00...\n`;
             statusDiv.className = 'processing';
-            console.log(`DEBUG: Запрос почасовой погоды: lat=${lat}, lng=${lng}, date=${dateString}, targetHour=${targetHour}`);
-
             if (!dateString || typeof lat !== 'number' || typeof lng !== 'number' || typeof targetHour !== 'number' || targetHour < 0 || targetHour > 23) {
                 return { temperature: "N/A (параметры)", description: "N/A (параметры)" };
             }
@@ -225,7 +210,7 @@
             } catch (e) { console.error("ОШИБКА в handleTable1Record:", e); statusDiv.textContent = `Ошибка: ${e.message}`; statusDiv.className = 'error'; }
         }
         
-        async function handleTable2Changes(allTable2Records_raw_from_onRecords, changes_raw) {
+        async function handleTable2Changes(allTable2Records_from_event, changes_raw) {
             console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
             console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
             
@@ -246,8 +231,8 @@
             console.log(`DEBUG: handleTable2Changes - Запрашиваем свежие данные из ${TABLE2_ID} (внутри handleTable2Changes)`);
             let allTable2Rows;
             try {
-                const rawTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
-                allTable2Rows = transformColumnarData(rawTable2Data);
+                const rawFreshTable2Data = await grist.docApi.fetchTable(TABLE2_ID); // <<<< ПОВТОРНЫЙ ЗАПРОС ДАННЫХ
+                allTable2Rows = transformColumnarData(rawFreshTable2Data);
                 if (!Array.isArray(allTable2Rows)) {
                      console.error("DEBUG: handleTable2Changes - Свежие данные Table2 не являются массивом.");
                      statusDiv.innerHTML += `Ошибка: не удалось получить актуальные данные из ${TABLE2_ID} при изменении.\n`;
