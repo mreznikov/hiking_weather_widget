@@ -230,102 +230,98 @@
             } catch (e) { console.error("ОШИБКА в handleTable1Record:", e); statusDiv.textContent = `Ошибка: ${e.message}`; statusDiv.className = 'error'; }
         }
         
-        async function handleTable2Changes(allTable2Records_from_event_ignored, changes_raw) {
-            console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
-            console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
-            
-            if (!currentTable1SelectedRecordFull || !currentTable1SelectedRecordFull.id) {
-                console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
-                return;
-            }
+      async function handleTable2Changes(allTable2Records_from_event_ignored, changes_raw) {
+    console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
+    console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
 
-            const latTable1 = currentTable1SelectedRecordFull[TABLE1_LAT_COL_ID];
-            const lngTable1 = currentTable1SelectedRecordFull[TABLE1_LNG_COL_ID];
-            const selectedTable1RowId = currentTable1SelectedRecordFull.id;
+    if (!currentTable1SelectedRecordFull || !currentTable1SelectedRecordFull.id) {
+        console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
+        return;
+    }
 
-            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
-                console.warn("DEBUG: handleTable2Changes - Недостаточно данных (координат) в выбранной записи Table1.");
-                return;
-            }
-            
-            console.log(`DEBUG: handleTable2Changes - Запрашиваем свежие данные из ${TABLE2_ID}`);
-            let allTable2Rows;
-            try {
-                const rawFreshTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
-                allTable2Rows = transformColumnarData(rawFreshTable2Data);
-                if (!Array.isArray(allTable2Rows)) {
-                     console.error("DEBUG: handleTable2Changes - Свежие данные Table2 не являются массивом.");
-                     statusDiv.innerHTML += `Ошибка: не удалось получить актуальные данные из ${TABLE2_ID} при изменении.\n`;
-                     return;
-                }
-            } catch (fetchError) {
-                 console.error(`ОШИБКА при загрузке ${TABLE2_ID} в handleTable2Changes:`, fetchError);
-                 statusDiv.innerHTML += `Ошибка: не удалось загрузить ${TABLE2_ID} при изменении.\n`;
-                 return;
-            }
-            console.log(`DEBUG: handleTable2Changes - ID текущей записи Table1 для связи: ${selectedTable1RowId}`);
+    const latTable1 = currentTable1SelectedRecordFull[TABLE1_LAT_COL_ID];
+    const lngTable1 = currentTable1SelectedRecordFull[TABLE1_LNG_COL_ID];
+    const selectedTable1RowId = currentTable1SelectedRecordFull.id;
 
-            const updatedRowIds = new Set();
-            let relevantChangeFound = false;
+    if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
+        console.warn("DEBUG: handleTable2Changes - Недостаточно данных (координат) в выбранной записи Table1.");
+        return;
+    }
 
-            // Пытаемся определить измененные строки из changes_raw, если это возможно
-            if (changes_raw && changes_raw.updated && typeof changes_raw.updated.forEach === 'function') {
-                console.log("DEBUG: handleTable2Changes - Обработка детального объекта 'changes.updated'");
-                changes_raw.updated.forEach((modifiedColumnsMap, rowId) => {
-                     const hasDateChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_DATE_COL_ID) : TABLE2_HIKE_DATE_COL_ID in modifiedColumnsMap;
-                     const hasTimeChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_TIME_COL_ID) : TABLE2_HIKE_TIME_COL_ID in modifiedColumnsMap;
+    console.log(`DEBUG: handleTable2Changes - Запрашиваем свежие данные из ${TABLE2_ID}`);
+    let allTable2Rows;
+    try {
+        const rawFreshTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
+        allTable2Rows = transformColumnarData(rawFreshTable2Data);
+        if (!Array.isArray(allTable2Rows)) {
+            console.error("DEBUG: handleTable2Changes - Свежие данные Table2 не являются массивом.");
+            statusDiv.innerHTML += `Ошибка: не удалось получить актуальные данные из ${TABLE2_ID} при изменении.\n`;
+            return;
+        }
+    } catch (fetchError) {
+        console.error(`ОШИБКА при загрузке ${TABLE2_ID} в handleTable2Changes:`, fetchError);
+        statusDiv.innerHTML += `Ошибка: не удалось загрузить ${TABLE2_ID} при изменении.\n`;
+        return;
+    }
 
-                    if (hasDateChanged || hasTimeChanged) {
-                        const changedRow = allTable2Rows.find(r => r.id === rowId);
-                        if (changedRow && changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
-                            updatedRowIds.add(rowId);
-                            relevantChangeFound = true;
-                        }
-                    }
-                });
-            } 
-            
-            // Если changes_raw не дал информации или был null, ИЛИ если мы хотим всегда перепроверять при любом изменении в Table2
-            if (!relevantChangeFound) { 
-                if (changes_raw === null) {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Перепроверка всех связанных строк Table2.");
-                } else {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате или не содержит релевантных изменений. Перепроверка всех связанных строк Table2.");
+    console.log(`DEBUG: handleTable2Changes - ID текущей записи Table1 для связи: ${selectedTable1RowId}`);
+
+    const updatedRowIds = new Set();
+    let relevantChangeFound = false;
+
+    // Пытаемся определить измененные строки из changes_raw, если это возможно
+    if (changes_raw && changes_raw.updated) {
+        console.log("DEBUG: handleTable2Changes - Обработка объекта 'changes.updated'");
+        for (const [rowId, modifiedColumnsMap] of Object.entries(changes_raw.updated)) {
+            const hasDateChanged = TABLE2_HIKE_DATE_COL_ID in modifiedColumnsMap;
+            const hasTimeChanged = TABLE2_HIKE_TIME_COL_ID in modifiedColumnsMap;
+
+            if (hasDateChanged || hasTimeChanged) {
+                const changedRow = allTable2Rows.find(r => r.id === parseInt(rowId, 10));
+                if (changedRow && changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
+                    updatedRowIds.add(parseInt(rowId, 10));
+                    relevantChangeFound = true;
                 }
-                allTable2Rows.forEach(row => {
-                    if (row && row[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
-                        updatedRowIds.add(row.id); // Добавляем все связанные строки для перепроверки
-                    }
-                });
-                if (updatedRowIds.size > 0) {
-                    relevantChangeFound = true; 
-                    statusDiv.innerHTML = `Обнаружено общее изменение в Table2. Проверка ${updatedRowIds.size} связанных записей для Table1.id=${selectedTable1RowId}...\n`;
-                }
-            }
-            
-            if (relevantChangeFound && updatedRowIds.size > 0) {
-                statusDiv.innerHTML += `Обновление погоды для ${updatedRowIds.size} строк(и) в Table2...\n`;
-                statusDiv.className = 'processing';
-                let actualUpdatesMade = 0;
-                for (const rowId of updatedRowIds) {
-                    const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
-                    if (changedRowTable2) { 
-                         console.log(`DEBUG: handleTable2Changes - Вызов processSingleTable2Row для Table2.id=${changedRowTable2.id} с forceUpdate=true`);
-                         if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1, true)){ 
-                             actualUpdatesMade++;
-                         }
-                    }
-                }
-                 if (actualUpdatesMade > 0) {
-                    statusDiv.innerHTML += `<b>Успешно обновлено ${actualUpdatesMade} записей о погоде в ${TABLE2_ID}!</b>`;
-                    statusDiv.className = 'success';
-                } else {
-                    statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для Table1.id=${selectedTable1RowId} (данные не изменились или новые невалидны).\n`;
-                }
-            } else {
-                console.log("DEBUG: handleTable2Changes - Не обнаружено релевантных изменений или связанных строк для обновления погоды.");
             }
         }
+    }
+
+    // Если changes_raw не дал информации или был null, ИЛИ если мы хотим всегда перепроверять при любом изменении в Table2
+    if (!relevantChangeFound) {
+        console.log("DEBUG: handleTable2Changes - Перепроверка всех связанных строк Table2.");
+        allTable2Rows.forEach(row => {
+            if (row && row[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
+                updatedRowIds.add(row.id); // Добавляем все связанные строки для перепроверки
+            }
+        });
+    }
+
+    if (updatedRowIds.size > 0) {
+        statusDiv.innerHTML += `Обновление погоды для ${updatedRowIds.size} строк(и) в Table2...\n`;
+        statusDiv.className = 'processing';
+        let actualUpdatesMade = 0;
+
+        for (const rowId of updatedRowIds) {
+            const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
+            if (changedRowTable2) {
+                console.log(`DEBUG: handleTable2Changes - Вызов processSingleTable2Row для Table2.id=${changedRowTable2.id} с forceUpdate=true`);
+                if (await processSingleTable2Row(changedRowTable2, latTable1, lngTable1, true)) {
+                    actualUpdatesMade++;
+                }
+            }
+        }
+
+        if (actualUpdatesMade > 0) {
+            statusDiv.innerHTML += `<b>Успешно обновлено ${actualUpdatesMade} записей о погоде в ${TABLE2_ID}!</b>`;
+            statusDiv.className = 'success';
+        } else {
+            statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для Table1.id=${selectedTable1RowId} (данные не изменились или новые невалидны).\n`;
+        }
+    } else {
+        console.log("DEBUG: handleTable2Changes - Не обнаружено релевантных изменений или связанных строк для обновления погоды.");
+    }
+}
+
 
         function initGrist() {
             console.log("DEBUG: initGrist() called");
