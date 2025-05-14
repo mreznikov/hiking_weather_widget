@@ -386,15 +386,14 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID}`); 
+            console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID} (onRecords)`); 
             try {
                 grist.onRecords(handleTable2Changes, TABLE2_ID); 
-                console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID}`); 
+                console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID} (onRecords)`); 
             } catch (e) {
-                console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID}:`, e);
+                console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID} (onRecords):`, e);
                 statusDiv.innerHTML += `ОШИБКА: не удалось подписаться на изменения в ${TABLE2_ID}.\n`;
             }
-
 
             console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
