@@ -29,8 +29,8 @@
         const TABLE2_ID = "Table2"; 
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
-        const TABLE2_TEMPERATURE_COL_ID = "I";   // Температура по-прежнему в колонке I Table2
-        const TABLE2_WEATHER_DESC_COL_ID = "J"; // ИЗМЕНЕНО: Описание погоды теперь в колонке J Table2
+        const TABLE2_TEMPERATURE_COL_ID = "I";   
+        const TABLE2_WEATHER_DESC_COL_ID = "J"; // <<< УСТАНОВЛЕНО В "J"
 
         const statusDiv = document.getElementById('status');
 
@@ -241,7 +241,7 @@
                     let shouldUpdate = false;
 
                     if (weatherData.temperature !== "N/A (нет даты/коорд.)" && weatherData.temperature !== "Ошибка погоды" && weatherData.temperature !== "N/A (нет данных)") {
-                        updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature; // Запись в колонку I
+                        updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
                         shouldUpdate = true;
                     }
                     
@@ -252,7 +252,7 @@
                                              !weatherData.description.startsWith("Неизвестный код"); 
                     
                     if (isDescriptionValid) {
-                        updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description; // Запись в колонку J (было f)
+                        updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description; 
                         shouldUpdate = true;
                     } else {
                         console.warn(`DEBUG: Описание погоды для ${TABLE2_ID}.id=${rowTable2.id} невалидно или отсутствует: "${weatherData.description}"`);
@@ -316,7 +316,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.7");
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.7"); // Обновляем на актуальную версию
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
