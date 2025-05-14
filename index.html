@@ -18,6 +18,10 @@
     <div id="status">Ожидание выбора записи в Table1...</div>
 
     <script>
+        // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
+        const WIDGET_VERSION = "v1.12";
+        console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
+
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
         let currentTable1RecordId = null;
         let currentTable1Id = null; 
@@ -211,7 +215,7 @@
 
                 for (const rowTable2 of matchingRowsInTable2) {
                     const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
-                    const hikeTimeValue = rowTable2[TABLE2_HIKE_TIME_COL_ID]; // Значение из колонки K
+                    const hikeTimeValue = rowTable2[TABLE2_HIKE_TIME_COL_ID]; 
                     
                     console.log(`DEBUG: Обработка строки Table2.id=${rowTable2.id}, дата (timestamp): ${hikeDateTimestamp}, значение времени из колонки K:`, hikeTimeValue, `(тип: ${typeof hikeTimeValue})`);
                     
@@ -222,17 +226,17 @@
                     }
 
                     let startHour = null;
-                    let targetHour = 12; // Час по умолчанию
+                    let targetHour = 12; 
 
-                    if (typeof hikeTimeValue === 'number' && hikeTimeValue > 0) { // Если K - timestamp
+                    if (typeof hikeTimeValue === 'number' && hikeTimeValue > 0) { 
                         const timeObj = new Date(hikeTimeValue * 1000);
                         if (!isNaN(timeObj.getTime())) {
-                            startHour = timeObj.getHours(); // Используем getHours() для локального времени браузера
+                            startHour = timeObj.getHours(); 
                             console.log(`DEBUG: Извлечен час (локальный) из timestamp ${hikeTimeValue} (колонка K): ${startHour}`);
                         } else {
                              console.warn(`Не удалось создать валидный объект Date из timestamp ${hikeTimeValue} (колонка K).`);
                         }
-                    } else if (typeof hikeTimeValue === 'string' && hikeTimeValue.includes(':')) { // Если K - строка "ЧЧ:ММ"
+                    } else if (typeof hikeTimeValue === 'string' && hikeTimeValue.includes(':')) { 
                         const parts = hikeTimeValue.split(':');
                         const parsedHour = parseInt(parts[0], 10);
                         if (!isNaN(parsedHour) && parsedHour >= 0 && parsedHour <= 23) {
@@ -341,7 +345,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.11");
+            console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
