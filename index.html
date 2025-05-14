@@ -29,8 +29,8 @@
         const TABLE2_ID = "Table2"; 
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
-        const TABLE2_TEMPERATURE_COL_ID = "I";   
-        const TABLE2_WEATHER_DESC_COL_ID = "f"; 
+        const TABLE2_TEMPERATURE_COL_ID = "I";   // Температура по-прежнему в колонке I Table2
+        const TABLE2_WEATHER_DESC_COL_ID = "J"; // ИЗМЕНЕНО: Описание погоды теперь в колонке J Table2
 
         const statusDiv = document.getElementById('status');
 
@@ -156,7 +156,7 @@
                 } else {
                      console.warn("Open-Meteo не вернул секцию 'daily':", data);
                 }
-                return { temperature, description, weatherCode }; // Возвращаем и код для отладки
+                return { temperature, description, weatherCode }; 
 
             } catch (error) {
                 console.error("ОШИБКА при запросе погоды Open-Meteo:", error);
@@ -165,7 +165,6 @@
         }
 
         async function handleTable1Record(recordTable1, mappings) {
-            // ... (код без изменений до цикла for) ...
             if (!recordTable1 || typeof recordTable1.id === 'undefined') {
                 statusDiv.textContent = "Запись в Table1 не выбрана или невалидна.";
                 statusDiv.className = '';
@@ -235,7 +234,6 @@
 
                     const weatherData = await getDailyWeather(latTable1, lngTable1, hikeDateFormatted);
                     
-                    // <<< ДОБАВЛЕН ЛОГ >>>
                     console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, дата=${hikeDateFormatted}, ПОЛУЧЕНЫ ДАННЫЕ ПОГОДЫ:`, weatherData);
                     statusDiv.innerHTML += `Для даты ${hikeDateFormatted}: Темп.=${weatherData.temperature}, Описание=${weatherData.description}\n`;
 
@@ -243,10 +241,10 @@
                     let shouldUpdate = false;
 
                     if (weatherData.temperature !== "N/A (нет даты/коорд.)" && weatherData.temperature !== "Ошибка погоды" && weatherData.temperature !== "N/A (нет данных)") {
-                        updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
+                        updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature; // Запись в колонку I
                         shouldUpdate = true;
                     }
-                    // Проверяем, что описание не является одной из "ошибочных" строк
+                    
                     const isDescriptionValid = weatherData.description && 
                                              weatherData.description !== "N/A (нет даты/коорд.)" && 
                                              weatherData.description !== "Ошибка погоды" && 
@@ -254,17 +252,15 @@
                                              !weatherData.description.startsWith("Неизвестный код"); 
                     
                     if (isDescriptionValid) {
-                        updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description;
+                        updatePayload[TABLE2_WEATHER_DESC_COL_ID] = weatherData.description; // Запись в колонку J (было f)
                         shouldUpdate = true;
                     } else {
                         console.warn(`DEBUG: Описание погоды для ${TABLE2_ID}.id=${rowTable2.id} невалидно или отсутствует: "${weatherData.description}"`);
                     }
                     
-                    // <<< ДОБАВЛЕН ЛОГ >>>
                     console.log(`DEBUG: Для ${TABLE2_ID}.id=${rowTable2.id}, updatePayload ПЕРЕД отправкой:`, JSON.parse(JSON.stringify(updatePayload)), `shouldUpdate: ${shouldUpdate}`);
 
-
-                    if (shouldUpdate && Object.keys(updatePayload).length > 0) { // Добавлена проверка, что payload не пустой
+                    if (shouldUpdate && Object.keys(updatePayload).length > 0) {
                         await grist.docApi.applyUserActions([
                             ['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]
                         ]);
@@ -274,7 +270,6 @@
                         console.log(`DEBUG: Обновление для ${TABLE2_ID}.id=${rowTable2.id} не требуется или payload пуст.`);
                     }
                 }
-                // ... (остальной код без изменений) ...
                 if (updatesMade > 0) {
                     statusDiv.innerHTML += `<b>Успешно обновлено ${updatesMade} записей в ${TABLE2_ID}!</b>`;
                     statusDiv.className = 'success';
@@ -321,7 +316,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.6");
+            console.log("DEBUG: Grist API настроен и готов. Версия виджета: v1.7");
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
         }
         initGrist();
