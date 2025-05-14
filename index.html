@@ -20,7 +20,7 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.13.10"; 
+        const WIDGET_VERSION = "v1.13.8"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
@@ -31,7 +31,7 @@
         const TABLE1_LAT_COL_ID = "B";        
         const TABLE1_LNG_COL_ID = "C";        
 
-        const TABLE2_ID = "Table2"; 
+        const TABLE2_ID = "Table2"; // Убедитесь, что это точный ID вашей таблицы в Grist
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_HIKE_TIME_COL_ID = "K";     
         const TABLE2_ROUTE_NAME_COL_ID = "F";    
@@ -302,7 +302,7 @@
         
         async function handleTable2Changes(allTable2Records_raw, changes_raw) {
             console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
-            console.log("DEBUG: handleTable2Changes - Аргумент 'allTable2Records_raw' (тип):", typeof allTable2Records_raw);
+            console.log("DEBUG: handleTable2Changes - Аргумент 'allTable2Records_raw' (тип):", typeof allTable2Records_raw); 
             console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
             
             if (!currentTable1SelectedRecordFull) {
@@ -331,11 +331,13 @@
                  statusDiv.innerHTML += `Ошибка: не удалось обработать данные из ${TABLE2_ID} при изменении.\n`;
                  return;
             }
-            
+            console.log("DEBUG: handleTable2Changes - Преобразованные/проверенные allTable2Rows (первые 5):", allTable2Rows.slice(0,5));
+
+
             const updatedRowIds = new Set();
             let relevantChangeFound = false;
 
-            if (changes_raw && changes_raw.updated && typeof changes_raw.updated.forEach === 'function') {
+            if (changes_raw && changes_raw.updated && typeof changes_raw.updated.forEach === 'function') { 
                 console.log("DEBUG: handleTable2Changes - Обработка детального объекта 'changes.updated'");
                 changes_raw.updated.forEach((modifiedColumnsMap, rowId) => {
                      const hasDateChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_DATE_COL_ID) : TABLE2_HIKE_DATE_COL_ID in modifiedColumnsMap;
@@ -343,7 +345,7 @@
 
                     if (hasDateChanged || hasTimeChanged) {
                         const changedRow = allTable2Rows.find(r => r.id === rowId);
-                        if (changedRow) { // Проверяем, что строка найдена
+                        if (changedRow) { 
                              console.log(`DEBUG: handleTable2Changes - Найдена измененная строка Table2.id=${rowId}. Ее routeName (${TABLE2_ROUTE_NAME_COL_ID}): "${changedRow[TABLE2_ROUTE_NAME_COL_ID]}"`);
                             if (changedRow[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1) {
                                 updatedRowIds.add(rowId);
@@ -364,10 +366,16 @@
                     console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате Map или отсутствует. Структура 'changes_raw':", changes_raw, ". Будем перепроверять все связанные строки Table2.");
                 }
                 
-                allTable2Rows.forEach(row => {
-                    if (row && typeof row === 'object' && row[TABLE2_ROUTE_NAME_COL_ID] === routeNameTable1) {
-                        console.log(`DEBUG: handleTable2Changes (fallback) - Найдена связанная строка Table2.id=${row.id} для маршрута "${routeNameTable1}"`);
-                        updatedRowIds.add(row.id);
+                allTable2Rows.forEach((row, index) => {
+                    if (row && typeof row === 'object') { 
+                        const routeNameInTable2 = row[TABLE2_ROUTE_NAME_COL_ID];
+                        console.log(`DEBUG: handleTable2Changes (fallback) - Сравнение: Table1.A="${routeNameTable1}" с Table2.F="${routeNameInTable2}" для Table2.id=${row.id}`);
+                        if (routeNameInTable2 === routeNameTable1) {
+                            console.log(`DEBUG: handleTable2Changes (fallback) - Найдена связанная строка Table2.id=${row.id} для маршрута "${routeNameTable1}"`);
+                            updatedRowIds.add(row.id);
+                        }
+                    } else {
+                        console.log(`DEBUG: handleTable2Changes (fallback) - Строка Table2 index ${index} невалидна или null.`);
                     }
                 });
 
