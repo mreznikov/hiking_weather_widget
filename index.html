@@ -20,7 +20,7 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.14.1_TEST"; 
+        const WIDGET_VERSION = "v1.14.2"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
@@ -34,7 +34,7 @@
         const TABLE2_ID = "Table2"; 
         const TABLE2_HIKE_DATE_COL_ID = "A";     
         const TABLE2_HIKE_TIME_COL_ID = "K";     
-        const TABLE2_ROUTE_NAME_COL_ID = "F";    // Связь Table1.A = Table2.F
+        const TABLE2_ROUTE_NAME_COL_ID = "C";    // ИСПРАВЛЕНО: Связь Table1.A = Table2.C
         const TABLE2_TEMPERATURE_COL_ID = "I";   
         const TABLE2_WEATHER_DESC_COL_ID = "J";  
 
@@ -71,6 +71,7 @@
 
         function formatDate_YYYY_MM_DD(dateValue) {
             if (dateValue === null || dateValue === undefined || dateValue === 0) {
+                console.warn("formatDate_YYYY_MM_DD: Получено пустое или нулевое значение даты:", dateValue);
                 return null; 
             }
             let dateObj;
@@ -78,12 +79,20 @@
                 dateObj = new Date(dateValue * 1000);
             } else if (dateValue instanceof Date) {
                 dateObj = dateValue;
-            } else { return null; }
-            if (isNaN(dateObj.getTime())) { return null; }
+            } else {
+                console.warn("Неверный формат даты для formatDate_YYYY_MM_DD:", dateValue, "(тип:", typeof dateValue, ")");
+                return null;
+            }
+            if (isNaN(dateObj.getTime())) { 
+                console.warn("Не удалось создать валидный объект Date из значения:", dateValue);
+                return null;
+            }
             const year = dateObj.getUTCFullYear(); 
             const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0'); 
             const day = String(dateObj.getUTCDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            const formattedDate = `${year}-${month}-${day}`;
+            // console.log(`DEBUG: formatDate_YYYY_MM_DD: Отформатированная дата: ${formattedDate}`); 
+            return formattedDate;
         }
 
         function getWeatherDescriptionFromWMO(code) {
@@ -96,12 +105,16 @@
                 85: 'Снежный ливень: слабый', 86: 'Снежный ливень: сильный',
                 95: 'Гроза', 96: 'Гроза с градом', 99: 'Сильная гроза с градом'
             };
-            return wmoDescriptions[code] || `Код ${code}`;
+            const description = wmoDescriptions[code];
+            // console.log(`DEBUG: getWeatherDescriptionFromWMO: код ${code} -> "${description || `Код ${code}`}"`);
+            return description || `Код ${code}`;
         }
 
         async function getHourlyWeatherForHike(lat, lng, dateString, targetHour) {
             statusDiv.innerHTML += `Запрос погоды для ${dateString} на ${String(targetHour).padStart(2, '0')}:00...\n`;
             statusDiv.className = 'processing';
+            console.log(`DEBUG: Запрос почасовой погоды: lat=${lat}, lng=${lng}, date=${dateString}, targetHour=${targetHour}`);
+
             if (!dateString || typeof lat !== 'number' || typeof lng !== 'number' || typeof targetHour !== 'number' || targetHour < 0 || targetHour > 23) {
                 return { temperature: "N/A (параметры)", description: "N/A (параметры)" };
             }
@@ -118,8 +131,8 @@
                     const targetISOStringPart = `${dateString}T${String(targetHour).padStart(2, '0')}:00`;
                     const hourIndex = data.hourly.time.findIndex(timeStr => timeStr.startsWith(targetISOStringPart));
                     if (hourIndex !== -1) {
-                        if (data.hourly.temperature_2m && data.hourly.temperature_2m[hourIndex] !== null) temperature = `${data.hourly.temperature_2m[hourIndex].toFixed(1)} °C`;
-                        if (data.hourly.weathercode && data.hourly.weathercode[hourIndex] !== null) description = getWeatherDescriptionFromWMO(data.hourly.weathercode[hourIndex]);
+                        if (data.hourly.temperature_2m && data.hourly.temperature_2m[hourIndex] !== null && data.hourly.temperature_2m[hourIndex] !== undefined) temperature = `${data.hourly.temperature_2m[hourIndex].toFixed(1)} °C`;
+                        if (data.hourly.weathercode && data.hourly.weathercode[hourIndex] !== null && data.hourly.weathercode[hourIndex] !== undefined) description = getWeatherDescriptionFromWMO(data.hourly.weathercode[hourIndex]);
                     }
                 }
                 return { temperature, description };
@@ -228,10 +241,10 @@
                 return;
             }
             
-            console.log(`DEBUG: handleTable2Changes - Запрашиваем свежие данные из ${TABLE2_ID} (внутри handleTable2Changes)`);
+            console.log(`DEBUG: handleTable2Changes - Запрашиваем свежие данные из ${TABLE2_ID}`);
             let allTable2Rows;
             try {
-                const rawFreshTable2Data = await grist.docApi.fetchTable(TABLE2_ID); // <<<< ПОВТОРНЫЙ ЗАПРОС ДАННЫХ
+                const rawFreshTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
                 allTable2Rows = transformColumnarData(rawFreshTable2Data);
                 if (!Array.isArray(allTable2Rows)) {
                      console.error("DEBUG: handleTable2Changes - Свежие данные Table2 не являются массивом.");
@@ -280,7 +293,8 @@
                 
                 allTable2Rows.forEach((row, index) => {
                     if (row && typeof row === 'object') { 
-                        const routeNameInTable2 = row[TABLE2_ROUTE_NAME_COL_ID];
+                        const routeNameInTable2 = row[TABLE2_ROUTE_NAME_COL_ID]; // Должно быть row["C"]
+                        console.log(`DEBUG: handleTable2Changes (fallback) - Сравнение: Table1.A="${routeNameTable1}" с Table2.${TABLE2_ROUTE_NAME_COL_ID}="${routeNameInTable2}" для Table2.id=${row.id}`);
                         if (routeNameInTable2 === routeNameTable1) {
                             console.log(`DEBUG: handleTable2Changes (fallback) - Найдена связанная строка Table2.id=${row.id} для маршрута "${routeNameTable1}"`);
                             updatedRowIds.add(row.id);
