@@ -20,11 +20,11 @@
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.13";
+        const WIDGET_VERSION = "v1.13"; // Убедитесь, что эта версия соответствует ожиданиям
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
-        let currentTable1SelectedRecordFull = null; // Хранит полную выбранную запись из Table1
+        let currentTable1SelectedRecordFull = null; 
         let currentTable1Id = null; 
         
         const TABLE1_ROUTE_NAME_COL_ID = "A"; 
@@ -221,7 +221,7 @@
 
 
         async function handleTable1Record(recordTable1, mappings) {
-            currentTable1SelectedRecordFull = recordTable1; // Сохраняем выбранную запись Table1
+            currentTable1SelectedRecordFull = recordTable1; 
 
             if (!recordTable1 || typeof recordTable1.id === 'undefined') {
                 statusDiv.textContent = "Запись в Table1 не выбрана или невалидна.";
@@ -261,12 +261,11 @@
                 statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для маршрута "${routeNameTable1}". Получение погоды...\n`;
 
                 for (const rowTable2 of matchingRowsInTable2) {
-                    // Проверяем, нужно ли обновлять погоду для этой строки Table2
                     const weatherDataIsMissing = !rowTable2[TABLE2_TEMPERATURE_COL_ID] || !rowTable2[TABLE2_WEATHER_DESC_COL_ID] || 
                                                  rowTable2[TABLE2_TEMPERATURE_COL_ID].includes("N/A") || rowTable2[TABLE2_TEMPERATURE_COL_ID].includes("Ошибка") ||
                                                  rowTable2[TABLE2_WEATHER_DESC_COL_ID].includes("N/A") || rowTable2[TABLE2_WEATHER_DESC_COL_ID].includes("Ошибка");
                     
-                    if (weatherDataIsMissing) { // Обновляем, только если данные отсутствуют или были ошибочными
+                    if (weatherDataIsMissing) { 
                          console.log(`Данные погоды для Table2.id=${rowTable2.id} отсутствуют или ошибочны, запрашиваем.`);
                         if(await processSingleTable2Row(rowTable2, latTable1, lngTable1)) {
                             updatesMadeCount++;
@@ -313,10 +312,10 @@
             if (changes.updated) {
                 for (const [rowId, modifiedColumns] of changes.updated) {
                     let colIdChanged = null;
-                    if (modifiedColumns instanceof Map) { // Новый формат GristDataChanges
+                    if (modifiedColumns instanceof Map) { 
                         if (modifiedColumns.has(TABLE2_HIKE_DATE_COL_ID)) colIdChanged = TABLE2_HIKE_DATE_COL_ID;
                         else if (modifiedColumns.has(TABLE2_HIKE_TIME_COL_ID)) colIdChanged = TABLE2_HIKE_TIME_COL_ID;
-                    } else { // Старый формат (на всякий случай)
+                    } else { 
                         if (TABLE2_HIKE_DATE_COL_ID in modifiedColumns) colIdChanged = TABLE2_HIKE_DATE_COL_ID;
                         else if (TABLE2_HIKE_TIME_COL_ID in modifiedColumns) colIdChanged = TABLE2_HIKE_TIME_COL_ID;
                     }
@@ -328,7 +327,6 @@
                     }
                 }
             }
-             // Можно добавить обработку changes.created, если нужно сразу запрашивать погоду для новых строк Table2
             
             if (relevantChangeFound) {
                 statusDiv.innerHTML = `Обнаружены изменения в дате/времени в Table2. Обновление погоды...\n`;
@@ -386,7 +384,7 @@
             });
 
             grist.onRecord(handleTable1Record);
-            grist.onRecords(handleTable2Changes, TABLE2_ID); // <<< СЛУШАЕМ ИЗМЕНЕНИЯ В TABLE2
+            grist.onRecords(handleTable2Changes, TABLE2_ID); 
 
             console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
             statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
