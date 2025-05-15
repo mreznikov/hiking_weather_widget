@@ -14,17 +14,16 @@
 </head>
 <body>
     <h3>Получение погоды для походов</h3>
-    <p>Выберите строку в Table1, чтобы получить температуру и детальный прогноз для связанных дат и времени из Table2.</p>
-    <p>Изменения Даты (А) или Времени (K) в Table2 также обновят погоду для связанного маршрута из Table1.</p>
+    <p>Выберите строку в Table1, чтобы получить/обновить температуру и детальный прогноз для связанных дат и времени из Table2.</p>
+    <p>Если вы изменили дату/время в Table2, перевыберите строку в Table1 для обновления погоды.</p>
     <div id="status">Ожидание выбора записи в Table1...</div>
 
     <script>
         // === НАЧАЛО СКРИПТА - ЛОГ ВЕРСИИ ===
-        const WIDGET_VERSION = "v1.15.1"; 
+        const WIDGET_VERSION = "v1.14.13"; 
         console.log(`DEBUG: Grist Weather Widget Загружен - Версия ${WIDGET_VERSION}`);
 
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
-        let currentTable1SelectedRecordFull = null; 
         let currentTable1Id = null; 
         
         const TABLE1_ROUTE_NAME_COL_ID = "A"; 
@@ -81,18 +80,12 @@
         function getWeatherDescriptionFromWMO(code) {
             const wmoDescriptions = {
                 0: 'Ясно', 1: 'В основном ясно', 2: 'Переменная облачность', 3: 'Пасмурно',
-                45: 'Туман', 48: 'Изморозь (оседающий туман)',
-                51: 'Морось: легкая', 53: 'Морось: умеренная', 55: 'Морось: сильная',
-                56: 'Ледяная морось: легкая', 57: 'Ледяная морось: сильная',
+                45: 'Туман', 48: 'Изморозь', 51: 'Морось: легкая', 53: 'Морось: умеренная', 55: 'Морось: сильная',
                 61: 'Дождь: слабый', 63: 'Дождь: умеренный', 65: 'Дождь: сильный',
-                66: 'Ледяной дождь: слабый', 67: 'Ледяной дождь: сильный',
-                71: 'Снегопад: слабый', 73: 'Снегопад: умеренный', 75: 'Снегопад: сильный',
-                77: 'Снежные зерна',
-                80: 'Ливень: слабый', 81: 'Ливень: умеренный', 82: 'Ливень: сильный (проливной)',
+                71: 'Снег: слабый', 73: 'Снег: умеренный', 75: 'Снег: сильный', 77: 'Снежные зерна',
+                80: 'Ливень: слабый', 81: 'Ливень: умеренный', 82: 'Ливень: сильный',
                 85: 'Снежный ливень: слабый', 86: 'Снежный ливень: сильный',
-                95: 'Гроза: слабая или умеренная', 
-                96: 'Гроза со слабым градом', 
-                99: 'Гроза с сильным градом'
+                95: 'Гроза', 96: 'Гроза с градом', 99: 'Сильная гроза с градом'
             };
             return wmoDescriptions[code] || `Код ${code}`;
         }
@@ -107,10 +100,8 @@
                     relativeHumidity: null, uvIndex: null
                 };
             }
-            
             const hourlyParams = "temperature_2m,relativehumidity_2m,precipitation_probability,precipitation,weathercode,cloudcover,uv_index";
             const weatherApiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&hourly=${hourlyParams}&start_date=${dateString}&end_date=${dateString}&timezone=auto`;
-            
             try {
                 const response = await fetch(weatherApiUrl);
                 if (!response.ok) {
@@ -118,49 +109,32 @@
                     throw new Error(`Open-Meteo API error: ${response.status} - ${errorData.reason || 'Unknown error'}`);
                 }
                 const data = await response.json();
-                console.log("DEBUG: Ответ Open-Meteo (hourly):", data);
-                
                 let weatherResult = {
                     temperature: "N/A", description: "N/A",
                     precipitationProbability: null, precipitationAmount: null, cloudCover: null,
                     relativeHumidity: null, uvIndex: null
                 };
-
                 if (data && data.hourly && data.hourly.time) {
                     const targetISOStringPart = `${dateString}T${String(targetHour).padStart(2, '0')}:00`;
                     const hourIndex = data.hourly.time.findIndex(timeStr => timeStr.startsWith(targetISOStringPart));
-
                     if (hourIndex !== -1) {
-                        console.log(`DEBUG: Найден индекс ${hourIndex} для времени ${targetISOStringPart}`);
                         if (data.hourly.temperature_2m?.[hourIndex] !== null && data.hourly.temperature_2m?.[hourIndex] !== undefined) 
                             weatherResult.temperature = `${data.hourly.temperature_2m[hourIndex].toFixed(1)} °C`;
-                        
                         if (data.hourly.weathercode?.[hourIndex] !== null && data.hourly.weathercode?.[hourIndex] !== undefined) 
                             weatherResult.description = getWeatherDescriptionFromWMO(data.hourly.weathercode[hourIndex]);
-                        
                         if (data.hourly.precipitation_probability?.[hourIndex] !== null && data.hourly.precipitation_probability?.[hourIndex] !== undefined)
                             weatherResult.precipitationProbability = data.hourly.precipitation_probability[hourIndex];
-
                         if (data.hourly.precipitation?.[hourIndex] !== null && data.hourly.precipitation?.[hourIndex] !== undefined)
                             weatherResult.precipitationAmount = data.hourly.precipitation[hourIndex];
-                        
                         if (data.hourly.cloudcover?.[hourIndex] !== null && data.hourly.cloudcover?.[hourIndex] !== undefined)
                             weatherResult.cloudCover = data.hourly.cloudcover[hourIndex];
-
                         if (data.hourly.relativehumidity_2m?.[hourIndex] !== null && data.hourly.relativehumidity_2m?.[hourIndex] !== undefined)
                             weatherResult.relativeHumidity = data.hourly.relativehumidity_2m[hourIndex];
-                        
                         if (data.hourly.uv_index?.[hourIndex] !== null && data.hourly.uv_index?.[hourIndex] !== undefined)
                             weatherResult.uvIndex = data.hourly.uv_index[hourIndex].toFixed(1);
-
-                    } else {
-                        console.warn(`Не найдено данных для времени ${targetISOStringPart} в ответе Open-Meteo.`);
                     }
-                } else {
-                     console.warn("Open-Meteo не вернул ожидаемые почасовые данные.", data);
                 }
                 return weatherResult;
-
             } catch (error) {
                 console.error("ОШИБКА запроса Open-Meteo:", error);
                 return { 
@@ -171,10 +145,10 @@
             }
         }
         
-        async function processSingleTable2Row(rowTable2, latTable1, lngTable1, forceUpdate = false) {
+        async function processSingleTable2Row(rowTable2, latTable1, lngTable1) {
             const oldTemperature = rowTable2[TABLE2_TEMPERATURE_COL_ID] || "";
             const oldWeatherDesc = rowTable2[TABLE2_WEATHER_DESC_COL_ID] || "";
-            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Старые: Temp='${oldTemperature}', Desc='${oldWeatherDesc}', force=${forceUpdate}`);
+            console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Старые: Temp='${oldTemperature}', Desc='${oldWeatherDesc}'`);
             
             const hikeDateTimestamp = rowTable2[TABLE2_HIKE_DATE_COL_ID];
             const hikeTimeValue = rowTable2[TABLE2_HIKE_TIME_COL_ID];
@@ -211,8 +185,7 @@
             if (weatherData.relativeHumidity !== null) fullWeatherDescription += `, Влажность: ${weatherData.relativeHumidity}%`;
             if (weatherData.uvIndex !== null) fullWeatherDescription += `, УФ: ${weatherData.uvIndex}`;
 
-
-            statusDiv.innerHTML += `Table2.id=${rowTable2.id} (${hikeDateFormatted} ${String(targetHour).padStart(2, '0')}:00): Темп.=${weatherData.temperature}, Описание=${fullWeatherDescription}\n`;
+            statusDiv.innerHTML += `Table2.id=${rowTable2.id} (${hikeDateFormatted} ${String(targetHour).padStart(2, '0')}:00): Темп.=${weatherData.temperature}, Описание='${fullWeatherDescription}'\n`;
             console.log(`DEBUG: processSingleTable2Row: Table2.id=${rowTable2.id}. Новые: Temp='${weatherData.temperature}', Полное описание='${fullWeatherDescription}'`);
 
             const updatePayload = {}; 
@@ -221,21 +194,16 @@
             const tempIsValid = weatherData.temperature && !weatherData.temperature.includes("N/A") && !weatherData.temperature.includes("Ошибка");
             const descIsValid = fullWeatherDescription && !fullWeatherDescription.includes("N/A") && !fullWeatherDescription.includes("Ошибка") && !fullWeatherDescription.startsWith("Погодный код");
 
-            if (forceUpdate) {
-                if (tempIsValid) updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
-                if (descIsValid) updatePayload[TABLE2_WEATHER_DESC_COL_ID] = fullWeatherDescription;
-                if (Object.keys(updatePayload).length > 0) {
-                    needsGristUpdate = true;
-                }
-            } else { 
-                if (tempIsValid && (weatherData.temperature !== oldTemperature || oldTemperature === "" || oldTemperature.includes("N/A") || oldTemperature.includes("Ошибка"))) {
-                    updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
-                    needsGristUpdate = true;
-                }
-                if (descIsValid && (fullWeatherDescription !== oldWeatherDesc || oldWeatherDesc === "" || oldWeatherDesc.includes("N/A") || oldWeatherDesc.includes("Ошибка") || oldWeatherDesc.startsWith("Код "))) {
-                    updatePayload[TABLE2_WEATHER_DESC_COL_ID] = fullWeatherDescription;
-                    needsGristUpdate = true;
-                }
+            const oldTempInvalid = !oldTemperature || oldTemperature.includes("N/A") || oldTemperature.includes("Ошибка");
+            const oldDescInvalid = !oldWeatherDesc || oldWeatherDesc.includes("N/A") || oldWeatherDesc.includes("Ошибка") || oldWeatherDesc.startsWith("Код ");
+
+            if (tempIsValid && (oldTempInvalid || weatherData.temperature !== oldTemperature)) {
+                updatePayload[TABLE2_TEMPERATURE_COL_ID] = weatherData.temperature;
+                needsGristUpdate = true;
+            }
+            if (descIsValid && (oldDescInvalid || fullWeatherDescription !== oldWeatherDesc)) {
+                updatePayload[TABLE2_WEATHER_DESC_COL_ID] = fullWeatherDescription;
+                needsGristUpdate = true;
             }
             
             if (needsGristUpdate) { 
@@ -243,18 +211,22 @@
                 await grist.docApi.applyUserActions([['UpdateRecord', TABLE2_ID, rowTable2.id, updatePayload]]);
                 return true;
             } else {
-                console.log(`DEBUG: Обновление для Table2.id=${rowTable2.id} не требуется.`);
+                console.log(`DEBUG: Обновление для Table2.id=${rowTable2.id} не требуется (данные не изменились или новые невалидны).`);
             }
             return false;
         }
 
         async function handleTable1Record(recordTable1, mappings) {
-            currentTable1SelectedRecordFull = recordTable1; 
-            if (!recordTable1 || !recordTable1.id) { statusDiv.textContent = "Запись Table1 не выбрана."; return; }
+            // currentTable1SelectedRecordFull больше не используется глобально для onRecords
+            if (!recordTable1 || !recordTable1.id) { 
+                statusDiv.textContent = "Запись в Table1 не выбрана или невалидна."; 
+                return; 
+            }
             console.log("DEBUG: Выбрана запись в Table1:", recordTable1);
             statusDiv.textContent = `Обработка Table1.id=${recordTable1.id}...\n`; statusDiv.className = 'processing';
 
             const selectedTable1RowId = recordTable1.id;
+            const routeNameForDisplay = recordTable1[TABLE1_ROUTE_NAME_COL_ID];
             const latTable1 = recordTable1[TABLE1_LAT_COL_ID];
             const lngTable1 = recordTable1[TABLE1_LNG_COL_ID];
 
@@ -271,120 +243,19 @@
                     statusDiv.textContent = `В ${TABLE2_ID} нет записей, связанных с Table1.id=${selectedTable1RowId} (через Table2.${TABLE2_REF_TO_TABLE1_COL_ID}).`; return;
                 }
                 let updatesMadeCount = 0;
-                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для Table1.id=${selectedTable1RowId}. Запрос погоды...\n`;
+                statusDiv.innerHTML = `Найдено ${matchingRowsInTable2.length} записей в ${TABLE2_ID} для Table1.id=${selectedTable1RowId} (Маршрут: ${routeNameForDisplay || 'N/A'}). Запрос погоды...\n`;
+                
                 for (const row of matchingRowsInTable2) {
-                    const currentTemp = row[TABLE2_TEMPERATURE_COL_ID];
-                    const currentDesc = row[TABLE2_WEATHER_DESC_COL_ID];
-                    const weatherMissing = !currentTemp || !currentDesc || 
-                                           String(currentTemp).includes("N/A") || String(currentTemp).includes("Ошибка") ||
-                                           String(currentDesc).includes("N/A") || String(currentDesc).includes("Ошибка");
-                    
-                    if (weatherMissing) { 
-                        console.log(`Данные погоды для Table2.id=${row.id} отсутствуют или ошибочны, запрашиваем (из handleTable1Record).`);
-                        if(await processSingleTable2Row(row, latTable1, lngTable1, false)) { 
-                             updatesMadeCount++;
-                        }
-                    } else {
-                        statusDiv.innerHTML += `Данные для Table2.id=${row.id} уже есть: ${currentTemp}, ${currentDesc}\n`;
+                    console.log(`DEBUG: handleTable1Record - Вызов processSingleTable2Row для Table2.id=${row.id}`);
+                    if(await processSingleTable2Row(row, latTable1, lngTable1)) { 
+                         updatesMadeCount++;
                     }
                 }
-                statusDiv.innerHTML += updatesMadeCount > 0 ? `<b>Обновлено ${updatesMadeCount} записей в ${TABLE2_ID}.</b>` : `Все связанные записи в ${TABLE2_ID} уже содержат актуальные данные.`;
+                statusDiv.innerHTML += updatesMadeCount > 0 ? `<b>Обновлено ${updatesMadeCount} записей в ${TABLE2_ID}.</b>` : `Данные в ${TABLE2_ID} для выбранного маршрута актуальны или не требуют обновления.`;
                 statusDiv.className = updatesMadeCount > 0 ? 'success' : '';
             } catch (e) { console.error("ОШИБКА в handleTable1Record:", e); statusDiv.textContent = `Ошибка: ${e.message}`; statusDiv.className = 'error'; }
         }
         
-        async function handleTable2Changes(allTable2Records_from_event_ignored, changes_raw) {
-            console.log("DEBUG: handleTable2Changes ВЫЗВАНА.");
-            console.log("DEBUG: handleTable2Changes - Аргумент 'changes_raw':", JSON.stringify(changes_raw, null, 2));
-            
-            if (!currentTable1SelectedRecordFull || !currentTable1SelectedRecordFull.id) {
-                console.log("DEBUG: handleTable2Changes - Нет выбранной записи в Table1, обновление погоды пропускается.");
-                return;
-            }
-
-            const latTable1 = currentTable1SelectedRecordFull[TABLE1_LAT_COL_ID];
-            const lngTable1 = currentTable1SelectedRecordFull[TABLE1_LNG_COL_ID];
-            const selectedTable1RowId = currentTable1SelectedRecordFull.id;
-
-            if (typeof latTable1 !== 'number' || typeof lngTable1 !== 'number') {
-                console.warn("DEBUG: handleTable2Changes - Недостаточно данных (координат) в выбранной записи Table1.");
-                return;
-            }
-            
-            console.log(`DEBUG: handleTable2Changes - Запрашиваем свежие данные из ${TABLE2_ID}`);
-            let allTable2Rows;
-            try {
-                const rawFreshTable2Data = await grist.docApi.fetchTable(TABLE2_ID);
-                allTable2Rows = transformColumnarData(rawFreshTable2Data);
-                if (!Array.isArray(allTable2Rows)) {
-                     console.error("DEBUG: handleTable2Changes - Свежие данные Table2 не являются массивом.");
-                     statusDiv.innerHTML += `Ошибка: не удалось получить актуальные данные из ${TABLE2_ID} при изменении.\n`;
-                     return;
-                }
-            } catch (fetchError) {
-                 console.error(`ОШИБКА при загрузке ${TABLE2_ID} в handleTable2Changes:`, fetchError);
-                 statusDiv.innerHTML += `Ошибка: не удалось загрузить ${TABLE2_ID} при изменении.\n`;
-                 return;
-            }
-            console.log(`DEBUG: handleTable2Changes - ID текущей записи Table1 для связи: ${selectedTable1RowId}`);
-
-            const updatedRowIds = new Set();
-            let relevantChangeFound = false;
-
-            if (changes_raw && changes_raw.updated && typeof changes_raw.updated.forEach === 'function') {
-                console.log("DEBUG: handleTable2Changes - Обработка детального объекта 'changes.updated'");
-                changes_raw.updated.forEach((modifiedColumnsMap, rowId) => {
-                     const hasDateChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_DATE_COL_ID) : TABLE2_HIKE_DATE_COL_ID in modifiedColumnsMap;
-                     const hasTimeChanged = modifiedColumnsMap instanceof Map ? modifiedColumnsMap.has(TABLE2_HIKE_TIME_COL_ID) : TABLE2_HIKE_TIME_COL_ID in modifiedColumnsMap;
-
-                    if (hasDateChanged || hasTimeChanged) {
-                        const changedRow = allTable2Rows.find(r => r.id === rowId);
-                        if (changedRow) { 
-                            if (changedRow[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
-                                updatedRowIds.add(rowId);
-                                relevantChangeFound = true;
-                            }
-                        }
-                    }
-                });
-            } else { 
-                if (changes_raw === null) {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw' is null. Перепроверка всех связанных строк Table2.");
-                } else {
-                    console.log("DEBUG: handleTable2Changes - 'changes_raw.updated' не в ожидаемом формате. Перепроверка всех связанных строк Table2.");
-                }
-                allTable2Rows.forEach(row => {
-                    if (row && row[TABLE2_REF_TO_TABLE1_COL_ID] === selectedTable1RowId) {
-                        updatedRowIds.add(row.id);
-                    }
-                });
-                if (updatedRowIds.size > 0) relevantChangeFound = true; 
-            }
-            
-            if (relevantChangeFound && updatedRowIds.size > 0) {
-                statusDiv.innerHTML = `Обнаружено изменение в Table2. Обновление погоды для ${updatedRowIds.size} строк(и)...\n`;
-                statusDiv.className = 'processing';
-                let actualUpdatesMade = 0;
-                for (const rowId of updatedRowIds) {
-                    const changedRowTable2 = allTable2Rows.find(r => r.id === rowId);
-                    if (changedRowTable2) { 
-                         console.log(`DEBUG: handleTable2Changes - Вызов processSingleTable2Row для Table2.id=${changedRowTable2.id} с forceUpdate=true`);
-                         if(await processSingleTable2Row(changedRowTable2, latTable1, lngTable1, true)){ 
-                             actualUpdatesMade++;
-                         }
-                    }
-                }
-                 if (actualUpdatesMade > 0) {
-                    statusDiv.innerHTML += `<b>Успешно обновлено ${actualUpdatesMade} записей о погоде в ${TABLE2_ID}!</b>`;
-                    statusDiv.className = 'success';
-                } else {
-                    statusDiv.innerHTML += `Изменения в Table2 не привели к обновлению погоды для Table1.id=${selectedTable1RowId} (данные не изменились или новые невалидны).\n`;
-                }
-            } else {
-                console.log("DEBUG: handleTable2Changes - Не обнаружено релевантных изменений или связанных строк для обновления погоды.");
-            }
-        }
-
         async function initGrist() {
             console.log("DEBUG: initGrist() called");
             if (typeof grist === 'undefined' || !grist.ready) {
@@ -402,50 +273,29 @@
                 });
                 console.log("DEBUG: grist.ready() завершен.");
 
-                if (grist.selectedTable && typeof grist.selectedTable.getTableId === 'function') {
-                    currentTable1Id = await grist.selectedTable.getTableId();
+                grist.onOptions((options, interaction) => { // Этот колбэк все еще полезен для получения tableId
+                    console.log("DEBUG: grist.onOptions - options:", options, "interaction:", interaction);
+                    currentTable1Id = (options?.tableId) || (interaction?.tableId) || null;
                     if (currentTable1Id) {
-                        console.log(`DEBUG: ID основной таблицы (Table1) установлен через grist.selectedTable.getTableId(): ${currentTable1Id}`);
-                    }
-                }
-                
-                if (!currentTable1Id && grist.onOptions && typeof grist.onOptions === 'function') {
-                     grist.onOptions((options, interaction) => {
-                        if (!currentTable1Id) { 
-                           currentTable1Id = (options?.tableId) || (interaction?.tableId) || null;
-                           if (currentTable1Id) {
-                                console.log(`DEBUG: ID основной таблицы (Table1) установлен через onOptions: ${currentTable1Id}`);
-                           }
-                        }
-                    });
-                }
-                
-                setTimeout(async () => {
-                    if (!currentTable1Id) {
-                         console.warn("ПРЕДУПРЕЖДЕНИЕ: Не удалось определить ID основной таблицы (Table1) автоматически. Убедитесь, что виджет привязан к Table1 в настройках.");
-                    }
-                    if (currentTable1Id) {
-                         console.log(`DEBUG: Финальный ID основной таблицы (Table1): ${currentTable1Id}`);
+                        console.log(`DEBUG: ID основной таблицы (Table1) установлен через onOptions: ${currentTable1Id}`);
                     } else {
-                        console.error("ОШИБКА КРИТИЧЕСКАЯ: ID основной таблицы (Table1) НЕ УСТАНОВЛЕН. Виджет может работать некорректно.");
+                         console.warn("ПРЕДУПРЕЖДЕНИЕ: ID основной таблицы (Table1) не получен через onOptions.");
                     }
+                });
+                
+                // Устанавливаем обработчик onRecord. ID таблицы Table1 будет неявно определен Grist.
+                grist.onRecord(handleTable1Record); 
+                console.log("DEBUG: Установлен обработчик grist.onRecord для Table1.");
 
-                    grist.onRecord(handleTable1Record); 
-                    console.log(`DEBUG: Попытка подписаться на изменения в ${TABLE2_ID} (onRecords)`);
-                    try {
-                        grist.onRecords(handleTable2Changes, TABLE2_ID);
-                        console.log(`DEBUG: Успешно подписан на изменения в ${TABLE2_ID} (onRecords)`);
-                    } catch (e) {
-                        console.error(`ОШИБКА при подписке на изменения в ${TABLE2_ID} (onRecords):`, e);
-                        statusDiv.innerHTML += `ОШИБКА: не удалось подписаться на изменения в ${TABLE2_ID}.\n${e.message}`;
-                    }
-                    console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
-                    statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
-
-                }, 200);
+                // Убираем подписку на Table2, так как она не работает надежно для автоматического обновления.
+                // Пользователь должен будет перевыбрать строку в Table1.
+                console.log(`DEBUG: Подписка на изменения в ${TABLE2_ID} (onRecords) НЕ используется в этой версии.`);
+                
+                console.log(`DEBUG: Grist API настроен и готов. Версия виджета: ${WIDGET_VERSION}`);
+                statusDiv.textContent = "Виджет готов. Выберите строку в Table1.";
 
             } catch (err) {
-                console.error("Ошибка при grist.ready():", err);
+                console.error("Ошибка при grist.ready() или начальной настройке:", err);
                 statusDiv.textContent = "Ошибка инициализации виджета.";
             }
         }
